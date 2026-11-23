@@ -833,6 +833,26 @@ function dismissPanel() {
   else closePanel();
 }
 
+function preventDefault(event) {
+  if (event.cancelable) event.preventDefault();
+}
+
+for (const name of ['copy', 'cut', 'contextmenu', 'dragstart']) {
+  document.addEventListener(name, preventDefault);
+}
+
+// Safari sends gesture events in addition to pointer events used by the game.
+for (const name of ['gesturestart', 'gesturechange']) {
+  document.addEventListener(name, preventDefault, { passive: false });
+}
+document.addEventListener(
+  'touchmove',
+  (event) => {
+    if (event.touches.length > 1) preventDefault(event);
+  },
+  { passive: false },
+);
+
 document.addEventListener('click', (event) => {
   if (blocked) return;
   const control = event.target.closest('button');

@@ -16,6 +16,8 @@
     sans-serif;
   color: var(--cream);
   background: var(--base);
+  touch-action: manipulation;
+  touch-action: pan-x pan-y;
 }
 * {
   box-sizing: border-box;
@@ -23,6 +25,14 @@
 body {
   margin: 0;
   min-width: 280px;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#nickname {
+  font-size: 16px;
+  -webkit-user-select: text;
+  user-select: text;
 }
 button,
 input,
@@ -550,6 +560,8 @@ a {
   display: none;
 }
 .panel {
+  touch-action: manipulation;
+  touch-action: pan-y;
   position: fixed;
   width: min(94vw, 670px);
   max-height: calc(100dvh - 28px);
