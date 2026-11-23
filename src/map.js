@@ -48,14 +48,21 @@ export function drawMap(canvas, state = {}, detailed = false) {
   rx(harbor.x1, harbor.z1, harbor.x2 - harbor.x1, harbor.z2 - harbor.z1, '#51334d');
   for (const x of roads.x) rx(x - 6.5, -202, 13, 403, '#5b516e');
   for (const z of roads.z) rx(-182, z - 6.5, 393, 13, '#5b516e');
-  if (state.alert?.level && state.alert.center) {
-    ctx.strokeStyle = '#fb83a7';
+  if (state.alert?.level && state.alert.lastSeen) {
+    const { lastSeen, patrols, left, level } = state.alert;
+    ctx.strokeStyle = left ? '#9bc8fc' : '#fb83a7';
+    if (left) ctx.setLineDash([3, 3]);
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(left(state.alert.center[0]), top(state.alert.center[1]), 41 * k, 0, Math.PI * 2);
+    ctx.arc((lastSeen[0] + 203) * k, top(lastSeen[1]), (26 + level * 3) * k, 0, Math.PI * 2);
     ctx.stroke();
-  } else {
-    ctx.strokeStyle = state.alert?.level ? '#ff85b0' : '#ba9272';
+    ctx.setLineDash([]);
+    for (const patrol of patrols) {
+      if (!patrol.disabled) dot(patrol.x, patrol.z, detailed ? 4 : 3, '#ff79a7');
+    }
+  }
+  {
+    ctx.strokeStyle = state.alert?.restricted ? '#ff85b0' : '#ba9272';
     ctx.strokeRect(
       left(harbor.x1),
       top(harbor.z1),

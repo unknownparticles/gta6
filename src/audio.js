@@ -68,6 +68,8 @@ export function audioSystem(settings) {
         mark: ['triangle', 430, 660, 0.2, 0.16],
         crash: ['sawtooth', 90, 34, 0.16, 0.19],
         shot: ['sawtooth', 280, 58, 0.14, 0.17],
+        swing: ['triangle', 155, 71, 0.16, 0.13],
+        hit: ['square', 108, 42, 0.14, 0.16],
         alarm: ['triangle', 510, 230, 0.45, 0.16],
         win: ['sine', 420, 990, 0.48, 0.18],
         reload: ['square', 220, 185, 0.12, 0.059],

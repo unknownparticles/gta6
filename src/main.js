@@ -188,7 +188,7 @@ function open(name, data = {}, keepFocus = false) {
   $('#panel-kicker').textContent =
     name === 'profile' || name === 'register' || name === 'confirm-pack'
       ? '本机演示'
-      : '潮线夜驶 · 港区试玩';
+      : '给他爱6 · GTA6';
   $('#panel-title').textContent = panelTitles[name] || '潮汐市';
   renderPanel(name, data);
   if (!panel.open) {
@@ -439,9 +439,11 @@ function renderPanel(name, data) {
     },
     districts() {
       return (
-        '<div class="tile"><b>维修街对峙</b><small>盐线与锈锚在维修街碰面。靠近后可观察事件。</small><div class="actions">' +
+        '<div class="activity-grid"><div class="tile"><b>街头追逐</b><small>抢车上路，甩开巡逻车并消星。</small><div class="actions">' +
+        button('体验抢车与消星', 'data-start="chase"', primary) +
+        '</div></div><div class="tile"><b>维修街对峙</b><small>盐线与锈锚在维修街碰面。靠近后可观察事件。</small><div class="actions">' +
         button('前往帮派事件', 'data-start="gang"', primary) +
-        '</div></div><canvas class="map-full" width="450" height="450" aria-label="潮汐市全图"></canvas><div class="row-grid">' +
+        '</div></div></div><canvas class="map-full" width="450" height="450" aria-label="潮汐市全图"></canvas><div class="row-grid">' +
         districts
           .map(
             (district, index) =>
@@ -458,7 +460,7 @@ function renderPanel(name, data) {
       );
     },
     help() {
-      return '<h3>电脑键鼠</h3><p><kbd>W A S D</kbd> 步行或驾驶　<kbd>E</kbd> 交互与上下车　<kbd>Shift</kbd> 冲刺　<kbd>空格</kbd> 手刹</p><p>按住鼠标拖动转动镜头，双击画面可请求鼠标锁定。左键或 <kbd>Enter</kbd> 开火，右键瞄准，<kbd>Q</kbd> 切换武器，<kbd>R</kbd> 装填。</p><p><kbd>M</kbd> 地图　<kbd>Esc</kbd> 暂停　长按 <kbd>T</kbd> 脱困</p><h3>手机与平板横屏</h3><p>左手摇杆移动或转向，右侧空白区拖动视角。右下方按钮随步行和驾驶切换，支持一边转向一边踩油门。</p>';
+      return '<h3>电脑键鼠</h3><p><kbd>W A S D</kbd> 步行或驾驶　<kbd>E</kbd> 交互、抢车或上下车　<kbd>Shift</kbd> 冲刺　<kbd>空格</kbd> 手刹</p><p>按住鼠标拖动转动镜头，双击画面可请求鼠标锁定。左键或 <kbd>Enter</kbd> 出拳或开火，右键瞄准，<kbd>Q</kbd> 在徒手和已解锁武器间切换，<kbd>R</kbd> 装填。</p><p><kbd>M</kbd> 地图　<kbd>Esc</kbd> 暂停　长按 <kbd>T</kbd> 脱困</p><h3>手机与平板横屏</h3><p>左手摇杆移动或转向，右侧空白区拖动视角。用右下的攻击按钮出拳或开火，靠近街车后点击抢车提示。驾驶时可以同时转向和踩油门。</p><h3>警方通缉</h3><p>粉色标记是巡逻车。脱离游戏内的视野后会进入搜索倒计时，重新被发现会暂停消星。</p>';
     },
     notice() {
       return messages

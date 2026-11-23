@@ -260,15 +260,24 @@ a {
   color: #ffa5e0;
 }
 .hero-en {
+  display: flex;
+  align-items: baseline;
+  gap: 0.64rem;
   font-family: Impact, 'Arial Black', sans-serif;
-  font-size: clamp(1.2rem, 2.5vw, 3rem);
-  letter-spacing: 0.16em;
-  line-height: 1.15;
-  color: #fff6fc;
+  font-size: clamp(2rem, 4.1vw, 4.25rem);
+  letter-spacing: 0.075em;
+  line-height: 1;
 }
 .hero-en strong {
-  color: var(--gold);
-  font-weight: inherit;
+  color: #ffe3a6;
+  font-weight: 900;
+}
+.hero-en small {
+  color: #fff3fb;
+  font:
+    800 clamp(0.75rem, 1.15vw, 1rem) system-ui,
+    sans-serif;
+  letter-spacing: 0.095em;
 }
 .hero-stamp {
   display: inline-flex;
@@ -590,6 +599,11 @@ a {
 .panel-content h3 {
   margin-top: 4px;
 }
+.activity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  gap: 8px;
+}
 .panel-nav,
 .actions {
   display: flex;
@@ -828,6 +842,23 @@ a {
   font-size: 0.8rem;
   font-weight: 800;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.wanted-stars {
+  color: #ffdf81;
+  font-weight: 950;
+  letter-spacing: 0.035em;
+}
+.wanted[data-searching] {
+  background: #162a47ed;
+  border-color: #9bc8fc;
+  color: #e9f2ff;
+}
+.crosshair[data-hit] {
+  border-color: #ff987b;
+  transform: translate(-50%, -50%) scale(1.35);
 }
 .minimap {
   bottom: max(17px, env(safe-area-inset-bottom));
@@ -1191,7 +1222,7 @@ a {
     font-size: clamp(2.35rem, 8vw, 4.3rem);
   }
   .hero-en {
-    font-size: 1rem;
+    font-size: clamp(1.45rem, 4.3vw, 2.15rem);
   }
   .hero-stamp {
     margin-top: 4px;

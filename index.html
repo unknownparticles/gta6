@@ -5,8 +5,8 @@
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
     <meta name="theme-color" content="#150c29" />
     <link rel="icon" type="image/png" href="/media/icon.png" />
-    <meta name="description" content="潮线夜驶。沿着霓虹海岸，在浏览器中体验一座虚构的开放城市。" />
-    <title>潮线夜驶 · 港区试玩</title>
+    <meta name="description" content="给他爱6 GTA6。沿着霓虹海岸，在浏览器中体验原创潮汐市。" />
+    <title>给他爱6 · GTA6</title>
   </head>
   <body>
     <main id="lobby" class="lobby">
@@ -37,8 +37,8 @@
       </nav>
       <div class="hero-title">
         <p><span></span> 潮汐市 · 日落之后</p>
-        <h1>潮线<span>夜驶</span></h1>
-        <div class="hero-en">TIDELINE <strong>DRIVE</strong></div>
+        <h1>给他爱<span>6</span></h1>
+        <div class="hero-en"><strong>GTA6</strong><small>geitaai</small></div>
         <div class="hero-stamp">港区开服 <b>试玩季</b></div>
       </div>
       <aside class="promos" aria-label="模拟运营活动">
@@ -102,7 +102,10 @@
             <i data-icon="pause"></i>
           </button>
         </div>
-        <div id="wanted" class="wanted" hidden></div>
+        <div id="wanted" class="wanted" hidden>
+          <span id="wanted-stars" class="wanted-stars"></span>
+          <span id="wanted-status"></span>
+        </div>
         <div class="minimap">
           <canvas id="map-mini" width="176" height="176" aria-label="小地图"></canvas
           ><small>潮汐市地图</small>
@@ -130,7 +133,7 @@
           <button data-game="switch" aria-label="切换武器"><i data-icon="repeat"></i></button>
           <button data-game="reload" aria-label="装填"><i data-icon="reload"></i></button>
           <button data-game="aim" aria-label="瞄准"><i data-icon="target"></i></button>
-          <button class="primary-touch" data-hold="fire" aria-label="开火">
+          <button id="touch-attack" class="primary-touch" data-hold="fire" aria-label="攻击">
             <i data-icon="fire"></i>
           </button>
         </div>

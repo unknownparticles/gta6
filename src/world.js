@@ -193,12 +193,14 @@ export function personModel(color = 0xbf6399, variant = 0) {
   const blaster = shape('box', 0x783f9b, 0.36, 0.97, -0.29, 0.14, 0.16, 0.41);
   blaster.visible = false;
   group.add(blaster);
-  const walk = (time, speed, aim = false) => {
+  const walk = (time, speed, aim = false, punch = 0, down = false) => {
     const swing = Math.sin(time * 11) * Math.min(0.75, speed * 0.17);
     limbs[0].leg.rotation.x = swing;
     limbs[1].leg.rotation.x = -swing;
     limbs[0].arm.rotation.x = -swing * 0.65;
-    limbs[1].arm.rotation.x = aim ? -1.05 : swing * 0.65;
+    limbs[1].arm.rotation.x = punch ? -0.45 - punch * 1.45 : aim ? -1.05 : swing * 0.65;
+    group.rotation.z = down ? -Math.PI / 2 : 0;
+    group.position.y = down ? 0.28 : 0.035;
     blaster.visible = aim;
     if (aim) blaster.position.set(0.35, 1.24, -0.46);
   };

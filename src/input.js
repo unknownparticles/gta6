@@ -90,6 +90,7 @@ export function createInput(canvas, container, action, canPlay) {
         button.setPointerCapture(event.pointerId);
         held.add(button.dataset.hold);
         button.dataset.pressed = '';
+        if (button.dataset.hold === 'fire') action('fire');
       },
       options,
     );
@@ -98,7 +99,14 @@ export function createInput(canvas, container, action, canPlay) {
     container.addEventListener(event, pointerRelease, options);
   }
 
-  const actions = { KeyE: 'use', KeyQ: 'switch', KeyR: 'reload', Escape: 'pause', KeyM: 'map', Enter: 'fire' };
+  const actions = {
+    KeyE: 'use',
+    KeyQ: 'switch',
+    KeyR: 'reload',
+    Escape: 'pause',
+    KeyM: 'map',
+    Enter: 'fire',
+  };
   window.addEventListener(
     'keydown',
     (event) => {
