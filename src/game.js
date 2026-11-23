@@ -356,7 +356,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     inventory: [],
   };
 
-  const input = createInput(canvas, stage, act, () => alive && !paused && viewActive);
+  const input = createInput(canvas, stage, act, () => alive && !paused && viewActive, touch);
   const { held, state: pad } = input;
   const low = () => save.settings.graphics === 'low' || (touch() && save.settings.graphics === 'auto');
 
@@ -2146,7 +2146,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     try {
       canvas.requestPointerLock?.()?.catch?.(() => {});
     } catch {
-      /* Drag remains available. */
+      /* The cursor can still turn the camera inside the canvas. */
     }
   });
   canvas.addEventListener('webglcontextrestored', () => updateHud(true));

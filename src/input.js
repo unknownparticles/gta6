@@ -1,4 +1,4 @@
-export function createInput(canvas, container, action, canPlay) {
+export function createInput(canvas, container, action, canPlay, touch) {
   const held = new Set();
   const state = { x: 0, y: 0, lookX: 0, lookY: 0, aiming: false, fire: false };
   const stick = container.querySelector('#stick');
@@ -6,8 +6,10 @@ export function createInput(canvas, container, action, canPlay) {
   const look = container.querySelector('#touch-look');
   let stickId = null;
   let lookId = null;
-  let mouseDrag = false;
+  let mousePressed = false;
   let dragMoved = false;
+  let mouseX = null;
+  let mouseY = 0;
   const pointerButtons = new Map();
 
   const position = (event) => {
@@ -60,7 +62,7 @@ export function createInput(canvas, container, action, canPlay) {
   look.addEventListener(
     'pointerdown',
     (event) => {
-      if (!canPlay() || lookId !== null) return;
+      if (!canPlay() || event.pointerType === 'mouse' || lookId !== null) return;
       event.preventDefault();
       lookId = event.pointerId;
       look.setPointerCapture(lookId);
@@ -150,7 +152,7 @@ export function createInput(canvas, container, action, canPlay) {
   canvas.addEventListener(
     'pointerdown',
     (event) => {
-      if (!canPlay() || event.pointerType !== 'mouse') return;
+      if (!canPlay() || touch() || event.pointerType !== 'mouse') return;
       if (event.button === 2) state.aiming = true;
       if (event.button === 0) {
         if (document.pointerLockElement === canvas) {
@@ -158,7 +160,7 @@ export function createInput(canvas, container, action, canPlay) {
           action('fire');
           return;
         }
-        mouseDrag = true;
+        mousePressed = true;
         dragMoved = false;
         canvas.focus({ preventScroll: true });
       }
@@ -170,20 +172,50 @@ export function createInput(canvas, container, action, canPlay) {
     (event) => {
       if (event.pointerType !== 'mouse') return;
       if (event.button === 0) {
-        if (mouseDrag && !dragMoved && canPlay()) action('fire');
-        state.fire = mouseDrag = false;
+        if (mousePressed && !dragMoved && canPlay()) action('fire');
+        state.fire = mousePressed = false;
       }
       if (event.button === 2) state.aiming = false;
     },
     options,
   );
-  window.addEventListener(
+  function moveMouse(dx, dy) {
+    if (mousePressed && Math.abs(dx) + Math.abs(dy) > 2) dragMoved = true;
+    state.lookX += dx * 0.0041;
+    state.lookY += dy * 0.0034;
+  }
+
+  canvas.addEventListener(
+    'pointermove',
+    (event) => {
+      if (event.pointerType !== 'mouse' || touch() || document.pointerLockElement === canvas) return;
+      if (canPlay() && mouseX !== null) moveMouse(event.clientX - mouseX, event.clientY - mouseY);
+      mouseX = event.clientX;
+      mouseY = event.clientY;
+    },
+    options,
+  );
+  canvas.addEventListener(
+    'pointerleave',
+    (event) => {
+      if (event.pointerType !== 'mouse') return;
+      mouseX = null;
+      if (mousePressed) dragMoved = true;
+    },
+    options,
+  );
+  canvas.addEventListener(
     'mousemove',
     (event) => {
-      if (!canPlay() || (!mouseDrag && document.pointerLockElement !== canvas)) return;
-      if (Math.abs(event.movementX) + Math.abs(event.movementY) > 2) dragMoved = true;
-      state.lookX += event.movementX * 0.0041;
-      state.lookY += event.movementY * 0.0034;
+      if (!canPlay() || touch() || document.pointerLockElement !== canvas) return;
+      moveMouse(event.movementX, event.movementY);
+    },
+    options,
+  );
+  document.addEventListener(
+    'pointerlockchange',
+    () => {
+      mouseX = null;
     },
     options,
   );
@@ -196,9 +228,10 @@ export function createInput(canvas, container, action, canPlay) {
       pointerButtons.forEach((button) => delete button.dataset.pressed);
       pointerButtons.clear();
       stickId = lookId = null;
+      mouseX = null;
       knob.style.transform = '';
       state.x = state.y = state.lookX = state.lookY = 0;
-      state.fire = state.aiming = mouseDrag = false;
+      state.fire = state.aiming = mousePressed = false;
     },
   };
 }
