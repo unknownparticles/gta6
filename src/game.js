@@ -1,6 +1,7 @@
 import { chapterById, chapterUnlocked, chapters } from './story.js';
 import * as T from 'three';
 import { cars, districtAt, paints, raceRoute, roads, weapons, zones } from './data.js';
+import { cityOpening } from './cinematics.js';
 import { administrativeDistrict, beach, canSwimAt, ferryStops, landmarks } from './city-layout.js';
 import { createCoastActivities } from './coast-activities.js';
 import { drive, pedestrianContact, vehicleContact } from './driving.js';
@@ -301,6 +302,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   const ui = Object.fromEntries(
     [...stage.querySelectorAll('[id]')].map((element) => [element.id, element]),
   );
+  const hud = stage.querySelector('.hud');
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const save = store.data;
   let paused = true;
   let alive = false;
@@ -333,6 +336,9 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   let relation = '';
   let nearAction;
   let viewActive = true;
+  let cinematic = null;
+  let cityOpeningShown = false;
+  let restoreCamera = false;
   let vehicle;
   let waypoint;
   let volleyRewarded = false;
@@ -359,6 +365,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   const input = createInput(canvas, stage, act, () => alive && !paused && viewActive, touch);
   const { held, state: pad } = input;
   const low = () => save.settings.graphics === 'low' || (touch() && save.settings.graphics === 'auto');
+  const animateScenes = () => save.settings.movement && !reducedMotion.matches;
 
   function resize() {
     const width = stage.clientWidth;
@@ -371,6 +378,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     camera.updateProjectionMatrix();
     stage.classList.toggle('touch-mode', touch());
     ui.touch.hidden = !touch();
+    if (viewActive && stage.hasAttribute('data-dialogue')) renderSceneWithoutMarker();
   }
 
   function syncMesh(object) {
@@ -439,9 +447,112 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       audio.pause();
       if (document.pointerLockElement === canvas) document.exitPointerLock();
     } else {
+      if (restoreCamera) {
+        updateCamera(0, true);
+        restoreCamera = false;
+      }
       canvas.focus({ preventScroll: true });
       tick = now();
     }
+  }
+
+  function focusCinematic() {
+    if (viewActive && cinematic) ui['cinematic-skip'].focus({ preventScroll: true });
+  }
+
+  function paintCinematic(shot) {
+    ui['cinematic-location'].textContent = shot.location || '';
+    ui['cinematic-title'].textContent = shot.title || '';
+    ui['cinematic-subtitle'].textContent = shot.subtitle || '';
+    ui.cinematic.dataset.opening = String(shot === cityOpening[0]);
+  }
+
+  function playCinematic(shots, done) {
+    if (!animateScenes()) {
+      done();
+      return;
+    }
+    setPause(true);
+    restoreCamera = true;
+    cinematic = { shots, index: 0, elapsed: 0, done };
+    ui.cinematic.hidden = false;
+    hud.inert = ui.touch.inert = canvas.inert = true;
+    paintCinematic(shots[0]);
+    ui['cinematic-fade'].style.opacity = '1';
+    focusCinematic();
+    if (viewActive && !stage.hidden && !document.hidden) renderCinematic(0);
+  }
+
+  function clearCinematic() {
+    cinematic = null;
+    ui.cinematic.hidden = true;
+    hud.inert = ui.touch.inert = canvas.inert = false;
+  }
+
+  function finishCinematic() {
+    if (!cinematic) return;
+    const { done } = cinematic;
+    clearCinematic();
+    done();
+  }
+
+  function renderCinematic(dt) {
+    const playback = cinematic;
+    let shot = playback.shots[playback.index];
+    playback.elapsed += dt;
+    if (playback.elapsed >= shot.duration) {
+      if (playback.index + 1 === playback.shots.length) {
+        finishCinematic();
+        return;
+      }
+      playback.elapsed -= shot.duration;
+      shot = playback.shots[++playback.index];
+      paintCinematic(shot);
+    }
+    const progress = playback.elapsed / shot.duration;
+    const t = progress * progress * (3 - 2 * progress);
+    camera.position.set(
+      T.MathUtils.lerp(shot.from[0], shot.to[0], t),
+      T.MathUtils.lerp(shot.from[1], shot.to[1], t),
+      T.MathUtils.lerp(shot.from[2], shot.to[2], t),
+    );
+    camera.lookAt(...shot.target);
+    const fadeIn = 1 - playback.elapsed / 0.22;
+    const fadeOut = 1 - (shot.duration - playback.elapsed) / 0.19;
+    const cut = playback.index + 1 < playback.shots.length || playback.shots === cityOpening;
+    ui['cinematic-fade'].style.opacity = String(Math.max(0, fadeIn, cut ? fadeOut : 0));
+    renderSceneWithoutMarker();
+  }
+
+  function renderSceneWithoutMarker() {
+    const markerVisible = marker.visible;
+    marker.visible = false;
+    renderer.render(scene, camera);
+    marker.visible = markerVisible;
+  }
+
+  function localShot(title, location, duration, contact) {
+    syncPlayerModel();
+    updateCamera(0, true);
+    const from = camera.position.toArray();
+    const target = cameraTarget.toArray();
+    if (contact && !city.interior(player.x, player.z)) {
+      const x = (contact[0] + player.x) / 2;
+      const z = (contact[1] + player.z) / 2;
+      const y = city.height(x, z);
+      const yaw = direction(player.x, player.z, contact);
+      for (const side of [1, -1]) {
+        const dx = Math.cos(yaw) * side;
+        const dz = -Math.sin(yaw) * side;
+        const a = [x + dx * 4.6, y + 2.6, z + dz * 4.6];
+        const b = [x + dx * 3.8, y + 2.25, z + dz * 3.8];
+        if ([1, 2, 3, 4].every((step) => city.clear(x + dx * step, z + dz * step, 0.3))) {
+          return { title, location, duration, from: a, to: b, target: [x, y + 1.2, z] };
+        }
+      }
+    }
+    const to = camera.position.clone().lerp(cameraTarget, 0.18).toArray();
+    return { title, location, duration, from, to, target };
   }
 
   function setup(mode, spawnCar = save.car) {
@@ -528,9 +639,18 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     updateHud(true);
   }
 
-  function showDialogue(chapter, lines, done) {
+  function showDialogue(chapter, lines, done, { opening = false, contact } = {}) {
     if (!lines?.length) return done?.();
-    callbacks.panel('dialogue', { chapter: chapter.title, lines, done, index: 0 });
+    const shot = localShot(
+      opening ? chapter.title : '',
+      opening ? '第一章 · ' + chapter.area : '',
+      opening ? 2.4 : 1.35,
+      contact,
+    );
+    if (!animateScenes() && viewActive) renderSceneWithoutMarker();
+    playCinematic([shot], () => {
+      callbacks.panel('dialogue', { chapter: chapter.title, lines, done, index: 0 });
+    });
   }
 
   function startChapter(id) {
@@ -538,8 +658,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     if (!chapter || !chapterUnlocked(save, id)) return;
     if (id === 'night') {
       setup('mission');
-      showDialogue(chapter, chapter.opening);
-      return;
+      return () => showDialogue(chapter, chapter.opening, undefined, { opening: true });
     }
     setup('free');
     const saved = save.storyCheckpoint;
@@ -568,6 +687,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     save.storyCheckpoint = { id, step: index };
     store.write();
     updateHud(true);
+    return () => {
+      const label = '第' + (chapters.indexOf(chapter) + 1) + '章 · ' + chapter.area;
+      playCinematic([localShot(chapter.title, label, 2.4)], () => setPause(false));
+    };
   }
 
   function currentStoryStep() {
@@ -578,7 +701,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     const run = storyRun;
     const step = currentStoryStep();
     if (!run || !step) return;
-    showDialogue(run.chapter, step.lines, () => {
+    const advance = () => {
       if (storyRun !== run) return;
       run.index++;
       if (run.index < run.chapter.steps.length) {
@@ -598,6 +721,9 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       store.write();
       audio.cue('win');
       callbacks.result('chapterDone', { id: run.chapter.id, reward: first ? run.chapter.reward : 0 });
+    };
+    showDialogue(run.chapter, step.lines, advance, {
+      contact: step.type === 'talk' ? step.point : undefined,
     });
   }
 
@@ -1973,6 +2099,20 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     camera.lookAt(cameraTarget);
   }
 
+  function syncPlayerModel() {
+    playerModel.group.visible = !vehicle;
+    playerModel.group.position.set(player.x, 0.035, player.z);
+    playerModel.group.rotation.y = player.yaw;
+    playerModel.walk(
+      time,
+      moving,
+      player.gear >= 0 && (pad.aiming || player.aiming || player.cooldown > 0),
+      Math.sin((player.punch / 0.3) * Math.PI),
+    );
+    playerModel.group.position.y += playerGround();
+    playerModel.group.rotation.x = player.swimming ? -1.18 + Math.sin(time * 5) * 0.08 : 0;
+  }
+
   function update(dt) {
     time += dt;
     if (mission) mission.elapsed += dt;
@@ -2020,17 +2160,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     if (paused) return;
     vehicleCollisions(dt);
     if (paused) return;
-    playerModel.group.visible = !vehicle;
-    playerModel.group.position.set(player.x, 0.035, player.z);
-    playerModel.group.rotation.y = player.yaw;
-    playerModel.walk(
-      time,
-      moving,
-      player.gear >= 0 && (pad.aiming || player.aiming || player.cooldown > 0),
-      Math.sin((player.punch / 0.3) * Math.PI),
-    );
-    playerModel.group.position.y += playerGround();
-    playerModel.group.rotation.x = player.swimming ? -1.18 + Math.sin(time * 5) * 0.08 : 0;
+    syncPlayerModel();
     updatePedestrians(dt);
     if (paused) return;
     updateRace(dt);
@@ -2068,13 +2198,22 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   function animate(at) {
     if (!alive) return;
     requestAnimationFrame(animate);
-    if (!viewActive || stage.hidden || (paused && frame > 0)) return;
     const delta = Math.min(0.09, (at - tick) / 1000);
     tick = at;
+    if (!viewActive || stage.hidden || document.hidden) return;
     if (delta <= 0) return;
+    if (cinematic) {
+      renderCinematic(delta);
+      return;
+    }
+    if (paused && (frame > 0 || restoreCamera)) return;
     frame++;
     const steps = Math.ceil(delta / 0.041);
     for (let i = 0; i < steps && !paused; i++) update(delta / steps);
+    if (cinematic) {
+      renderCinematic(0);
+      return;
+    }
     updateCamera(delta, frame === 1);
     frameMean += (delta * 1000 - frameMean) * 0.035;
     if (low() || save.settings.graphics === 'auto') {
@@ -2138,6 +2277,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
 
   canvas.addEventListener('webglcontextlost', (event) => {
     event.preventDefault();
+    clearCinematic();
     setPause(true);
     callbacks.result('context', {});
   });
@@ -2150,12 +2290,30 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     }
   });
   canvas.addEventListener('webglcontextrestored', () => updateHud(true));
+  ui['cinematic-skip'].addEventListener('click', finishCinematic);
+  ui.cinematic.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !event.repeat) {
+      event.preventDefault();
+      event.stopPropagation();
+      finishCinematic();
+    }
+  });
   return {
     launch(mode, chapterId) {
       const started = alive;
       if (save.hospitalLoss !== null) arriveHospital();
-      else if (mode === 'story') startChapter(chapterId);
-      else setup(mode);
+      else {
+        const resume = () => setPause(false);
+        let afterOpening = resume;
+        if (mode === 'story') afterOpening = startChapter(chapterId) || resume;
+        else setup(mode);
+        if (cityOpeningShown) afterOpening();
+        else {
+          cityOpeningShown = true;
+          syncPlayerModel();
+          playCinematic(cityOpening, afterOpening);
+        }
+      }
       if (!started) requestAnimationFrame(animate);
     },
     pause(value = true) {
@@ -2163,6 +2321,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     },
     resize,
     reset() {
+      clearCinematic();
       setPause(true);
       store.write();
     },
@@ -2189,6 +2348,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     get paused() {
       return paused;
     },
+    get inCinematic() {
+      return Boolean(cinematic);
+    },
+    focusCinematic,
     drawMap(canvas, detailed) {
       drawMap(canvas, mapState, detailed);
     },

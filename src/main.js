@@ -155,7 +155,8 @@ function rotationState() {
     if (!play.hidden) {
       game?.view(!next);
       if (!next && !loading && game) {
-        if (
+        if (game.inCinematic) game.focusCinematic();
+        else if (
           ['fail', 'hospital', 'mission', 'chapterDone', 'dialogue', 'race', 'context'].includes(view)
         )
           open(view, details, true);
@@ -173,6 +174,7 @@ function closePanel(continuePlay = true) {
   view = '';
   details = {};
   panel.close();
+  delete play.dataset.dialogue;
   if (!play.hidden && continuePlay) game?.pause(false);
   else if (lastFocus && !lastFocus.closest('[hidden]') && document.contains(lastFocus))
     lastFocus.focus({ preventScroll: true });
@@ -217,6 +219,10 @@ function open(name, data = {}, keepFocus = false) {
     $('#toast').hidden = true;
     panel.querySelector('.panel-toast')?.remove();
   }
+  if (name === 'dialogue') {
+    clearTimeout(toastTimer);
+    $('#toast').hidden = true;
+  }
   view = name;
   details = data;
   if (blocked) return;
@@ -226,6 +232,7 @@ function open(name, data = {}, keepFocus = false) {
     name === 'profile' || name === 'register' || name === 'confirm-pack' ? '本机演示' : 'GTA6-S城风云';
   $('#panel-title').textContent = name === 'dialogue' ? data.chapter : panelTitles[name] || 'S城';
   panel.classList.toggle('story-dialog', name === 'dialogue');
+  play.toggleAttribute('data-dialogue', name === 'dialogue');
   panel.querySelector('[data-panel-close]').hidden = name === 'dialogue';
   renderPanel(name, data);
   if (!panel.open) {
@@ -752,7 +759,7 @@ function renderPanel(name, data) {
               '</option>',
           )
           .join('') +
-        '</select></label><label class="settings-row">镜头震动和活动动效<input type="checkbox" data-setting="movement"' +
+        '</select></label><label class="settings-row">镜头震动、开场与过场动画<input type="checkbox" data-setting="movement"' +
         (values.movement ? ' checked' : '') +
         '></label>' +
         button('素材与致谢', go('credits')) +

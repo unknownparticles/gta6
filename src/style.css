@@ -1915,8 +1915,83 @@ a {
   background: linear-gradient(110deg, #593251, #783c67);
   color: #ffe3a4;
 }
+.cinematic {
+  --letterbox: clamp(22px, 7dvh, 62px);
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  color: var(--cream);
+  border-block: var(--letterbox) solid #0b0810;
+  background: linear-gradient(0deg, #0b0810db 0%, transparent 46%);
+}
+#cinematic-fade {
+  position: absolute;
+  inset: 0;
+  background: #0b0810;
+  pointer-events: none;
+}
+.cinematic-caption {
+  position: absolute;
+  inset: auto max(20px, env(safe-area-inset-right)) 7% max(24px, env(safe-area-inset-left));
+  text-shadow: 0 2px 18px #10071c, 0 1px 4px #10071c;
+  pointer-events: none;
+}
+#cinematic-location {
+  color: var(--gold);
+  font-size: clamp(0.72rem, 2.2dvh, 0.95rem);
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+#cinematic-title {
+  margin-block: 0.16em;
+  font-size: clamp(1.85rem, 7dvh, 4.4rem);
+  line-height: 1;
+  font-weight: 900;
+}
+.cinematic[data-opening='true'] #cinematic-title {
+  color: #fff4dc;
+  font-family: Impact, 'Arial Black', sans-serif;
+  font-size: clamp(3.2rem, 15dvh, 8rem);
+  letter-spacing: 0.045em;
+}
+#cinematic-subtitle {
+  color: #ffdfd8;
+  font-size: clamp(0.78rem, 2.8dvh, 1.15rem);
+  font-weight: 700;
+}
+.cinematic-caption :empty {
+  display: none;
+}
+#cinematic-skip {
+  position: absolute;
+  top: max(10px, calc(env(safe-area-inset-top) - var(--letterbox)));
+  right: max(12px, env(safe-area-inset-right));
+  min-height: 44px;
+  border-color: #dcaac55e;
+  background: #1d1426ed;
+}
+.touch-mode #cinematic-skip kbd {
+  display: none;
+}
+.play:has(.cinematic:not([hidden])) :is(.hud, .touch),
+.play[data-dialogue] :is(.hud, .touch),
+.play:has(.cinematic:not([hidden])) ~ .toast {
+  visibility: hidden;
+}
 .story-dialog {
-  margin: auto auto max(20px, env(safe-area-inset-bottom));
+  margin: auto auto max(12px, env(safe-area-inset-bottom));
+  max-height: min(53dvh, 400px);
+  background: #23152cf5;
+}
+.story-dialog::backdrop {
+  background: linear-gradient(#0b0810 0 6dvh, transparent 6dvh 48%, #0b0810a8 100%);
+}
+.story-dialog .panel-frame > header {
+  padding: 8px 14px;
+}
+.story-dialog .panel-content {
+  padding: 9px 14px 12px;
+  gap: 8px;
 }
 .story-line {
   display: flex;
@@ -1945,4 +2020,25 @@ a {
 }
 .story-actions small {
   margin-right: auto;
+}
+@media (max-height: 400px) {
+  .story-dialog {
+    max-height: calc(100dvh - max(48px, env(safe-area-inset-top) + env(safe-area-inset-bottom) + 24px));
+  }
+  .story-dialog #panel-kicker {
+    display: none;
+  }
+  .story-dialog .panel-frame h2 {
+    font-size: 1.1rem;
+  }
+  .story-line {
+    padding: 7px 9px;
+  }
+  .story-line p {
+    margin-top: 2px;
+    font-size: 0.88rem;
+  }
+  .story-actions .action {
+    min-height: 44px;
+  }
 }
