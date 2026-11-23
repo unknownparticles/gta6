@@ -18,6 +18,12 @@ npm run preview
 
 `dist/` 可以放到静态站点。游戏运行时从本项目加载模型、图像和声音。
 
+## 发布到 GitHub Pages
+
+将 `main` 推送到目标 GitHub 仓库，并在 **Settings → Pages → Build and deployment** 中将 **Source** 设为 **GitHub Actions**。首次启用后，可以在 **Actions → 发布潮线夜驶** 手动运行。之后推送到 `main` 会自动构建并发布。
+
+发布完成后，从 **Settings → Pages** 打开试玩地址。项目站点的默认路径是 `https://<账号>.github.io/<仓库名>/`，构建使用相对路径。试玩存档按网站地址保存在浏览器中，首次打开 GitHub Pages 站点会从新存档开始。
+
 ## 操作
 
 | 操作 | 电脑 | 手机和平板 |
