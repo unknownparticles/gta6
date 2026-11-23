@@ -19,6 +19,10 @@ const initial = () => ({
   pulse: false,
   arsenal: [],
   pickups: [],
+  storyCompleted: [],
+  storyCheckpoint: null,
+  welfareClaimed: [],
+  firstSix: false,
   membership: false,
   hospitalLoss: null,
   best: null,
@@ -35,12 +39,21 @@ export function loadSave(storage) {
     const loaded = raw ? JSON.parse(raw) : {};
     if (loaded && typeof loaded === 'object') {
       save = { ...save, ...loaded, settings: { ...save.settings, ...loaded.settings } };
-      for (const name of ['claimed', 'dates', 'owned', 'skins', 'pickups']) {
+      for (const name of [
+        'claimed',
+        'dates',
+        'owned',
+        'skins',
+        'pickups',
+        'storyCompleted',
+        'welfareClaimed',
+      ]) {
         if (!Array.isArray(save[name])) save[name] = initial()[name];
       }
       if (!save.owned.includes(save.car) || !cars[save.car]) save.car = 'sedan';
       if (!save.paint || typeof save.paint !== 'object') save.paint = {};
     }
+    if (save.done && !save.storyCompleted.includes('night')) save.storyCompleted.push('night');
     normalizeArsenal(save);
     storage.setItem(key, JSON.stringify(save));
   } catch {

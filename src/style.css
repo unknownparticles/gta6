@@ -1876,3 +1876,73 @@ a {
     gap: 5px;
   }
 }
+
+.event-bar button.reward-ready {
+  color: #ffffcd;
+}
+.chapter-progress {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #ffe7ba;
+}
+.chapter-list {
+  display: grid;
+  gap: 6px;
+}
+.chapter-tile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(92px, max-content);
+  align-items: center;
+  gap: 8px 12px;
+}
+.chapter-tile > div {
+  display: grid;
+  gap: 5px;
+}
+.chapter-tile p {
+  color: #e4cce6;
+  font-size: 0.82rem;
+}
+.chapter-tile .chapter-area {
+  color: #ffce9d;
+}
+.chapter-tile .action {
+  min-height: 40px;
+}
+.first-offer {
+  background: linear-gradient(110deg, #593251, #783c67);
+  color: #ffe3a4;
+}
+.story-dialog {
+  margin: auto auto max(20px, env(safe-area-inset-bottom));
+}
+.story-line {
+  display: flex;
+  align-items: start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #bc89ae;
+  border-radius: 6px;
+  background: #362442;
+}
+.story-line > i,
+.story-line b {
+  color: #ffdc99;
+}
+.story-line p {
+  margin-top: 5px;
+  color: #fff5ec;
+  font-size: 0.98rem;
+  line-height: 1.5;
+}
+.story-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.story-actions small {
+  margin-right: auto;
+}

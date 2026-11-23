@@ -1,3 +1,4 @@
+import { chapterById, chapterUnlocked, chapters } from './story.js';
 import * as T from 'three';
 import { cars, districtAt, paints, raceRoute, roads, weapons, zones } from './data.js';
 import { administrativeDistrict, beach, canSwimAt, ferryStops, landmarks } from './city-layout.js';
@@ -59,6 +60,11 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   const city = makeCity(scene);
   const coast = createCoastActivities(scene, personModel);
   const pickups = [];
+  const storyContact = personModel(0xf6b56d, 1);
+  storyContact.group.visible = false;
+  scene.add(storyContact.group);
+  let storyRun = null;
+
   const camera = new T.PerspectiveCamera(60, 1, 0.18, 1600);
   const cameraTarget = new T.Vector3();
   const cameraWanted = new T.Vector3();
@@ -441,6 +447,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   function setup(mode, spawnCar = save.car) {
     scene.fog.density = 0.0037;
     waypoint = null;
+    storyRun = null;
+    storyContact.group.visible = false;
     coast.reset();
     volleyRewarded = false;
     player.jump = player.lift = 0;
@@ -518,6 +526,98 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     resize();
     setPause(false);
     updateHud(true);
+  }
+
+  function showDialogue(chapter, lines, done) {
+    if (!lines?.length) return done?.();
+    callbacks.panel('dialogue', { chapter: chapter.title, lines, done, index: 0 });
+  }
+
+  function startChapter(id) {
+    const chapter = chapterById(id);
+    if (!chapter || !chapterUnlocked(save, id)) return;
+    if (id === 'night') {
+      setup('mission');
+      showDialogue(chapter, chapter.opening);
+      return;
+    }
+    setup('free');
+    const saved = save.storyCheckpoint;
+    const index =
+      saved?.id === id &&
+      Number.isInteger(saved.step) &&
+      saved.step >= 0 &&
+      saved.step < chapter.steps.length
+        ? saved.step
+        : 0;
+    storyRun = { chapter, index };
+    const previous = chapter.steps[index - 1];
+    const resumeChoice =
+      previous?.type === 'ferry'
+        ? ferryStops[1].pier
+        : previous?.type === 'swim'
+          ? [297, 148]
+          : previous?.point || chapter.start;
+    [player.x, player.z] = city.clear(...resumeChoice) ? resumeChoice : chapter.start;
+    if (chapter.driving && chapter.steps[index].type === 'drive') {
+      const yaw = direction(player.x, player.z, chapter.steps[index].point);
+      enterCar(newVehicle(save.car, [player.x, player.z], yaw));
+    }
+    camera.position.set(player.x, 5 + city.height(player.x, player.z), player.z + 8);
+    cameraTarget.set(player.x, 1.4 + city.height(player.x, player.z), player.z - 4);
+    save.storyCheckpoint = { id, step: index };
+    store.write();
+    updateHud(true);
+  }
+
+  function currentStoryStep() {
+    return storyRun?.chapter.steps[storyRun.index];
+  }
+
+  function completeStoryStep() {
+    const run = storyRun;
+    const step = currentStoryStep();
+    if (!run || !step) return;
+    showDialogue(run.chapter, step.lines, () => {
+      if (storyRun !== run) return;
+      run.index++;
+      if (run.index < run.chapter.steps.length) {
+        save.storyCheckpoint = { id: run.chapter.id, step: run.index };
+        store.write();
+        updateHud(true);
+        return;
+      }
+      const first = !save.storyCompleted.includes(run.chapter.id);
+      if (first) {
+        save.storyCompleted.push(run.chapter.id);
+        save.coins += run.chapter.reward;
+      }
+      save.storyCheckpoint = null;
+      storyRun = null;
+      storyContact.group.visible = false;
+      store.write();
+      audio.cue('win');
+      callbacks.result('chapterDone', { id: run.chapter.id, reward: first ? run.chapter.reward : 0 });
+    });
+  }
+
+  function updateStory() {
+    const step = currentStoryStep();
+    if (!step) return;
+    const [x, z] = step.point;
+    storyContact.group.visible = step.type === 'talk';
+    if (step.type === 'talk') {
+      storyContact.group.position.set(x, city.height(x, z), z);
+      storyContact.group.rotation.y = direction(x, z, [player.x, player.z]);
+    }
+    if (distance(player.x, player.z, step.point) > (step.radius || 4.2)) return;
+    if (
+      (step.type === 'drive' && vehicle) ||
+      (step.type === 'swim' && player.swimming) ||
+      (step.type === 'visit' && !vehicle && !player.swimming && !coast.riding)
+    ) {
+      completeStoryStep();
+    }
   }
 
   function startMission() {
@@ -647,11 +747,20 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
         icon: 'exit',
         run: () => {
           [player.x, player.z] = coast.leave();
+          if (currentStoryStep()?.type === 'ferry' && coast.dock === 1) completeStoryStep();
           callbacks.toast('已抵达' + administrativeDistrict(player.x, player.z));
         },
       };
     }
     if (player.swimming) return null;
+    const step = currentStoryStep();
+    if (
+      step?.type === 'talk' &&
+      within(step.point, 3.3) &&
+      city.interior(x, z)?.id === city.interior(...step.point)?.id
+    ) {
+      return { text: '与' + step.who + '对话', icon: 'flag', run: completeStoryStep };
+    }
     const stopIndex = ferryStops.findIndex((stop) => within(stop.pier, 4.5));
     if (stopIndex >= 0 && coast.dock === stopIndex) {
       return {
@@ -699,7 +808,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
         ? { text: '上车 · ' + cars[street.type].name, icon: 'car', run: () => enterCar(street) }
         : { text: '抢车 · ' + cars[street.type].name, icon: 'key', run: () => takeStreetCar(street) };
     }
-    if (!mission && !alert.level && within(zones.garage, 10)) {
+    if (!mission && !storyRun && !alert.level && within(zones.garage, 10)) {
       return { text: '接取「夜班急件」', run: startMission };
     }
     if (within(zones.training, 7)) {
@@ -771,6 +880,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     const first = !save.done;
     const reward = first ? 240 : 160;
     mission = null;
+    if (!save.storyCompleted.includes('night')) save.storyCompleted.push('night');
     if (first) {
       save.done = true;
       if (!save.owned.includes('coupe')) save.owned.push('coupe');
@@ -779,7 +889,16 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     store.write();
     audio.cue('win');
     setPause(true);
-    callbacks.result('mission', { elapsed, retries, first, reward });
+    const finish = () => callbacks.result('mission', { elapsed, retries, first, reward });
+    showDialogue(
+      chapters[0],
+      [
+        ['阿岚', '盒子收到了。货场那边却还在等另外一份签收单。'],
+        ['车手', '我带回的这张有个南岸旧仓库的章。'],
+        ['阿岚', '留好它。去人民广场码头，找那个还记得旧章的人。'],
+      ],
+      finish,
+    );
   }
 
   function startRace() {
@@ -1037,7 +1156,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     callbacks.result('fail', {
       reason,
       mission: Boolean(mission),
-      checkpoint: Boolean(mission?.checkpoint),
+      checkpoint: Boolean(mission?.checkpoint || storyRun),
     });
   }
 
@@ -1066,6 +1185,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   }
 
   function retry() {
+    if (storyRun) {
+      startChapter(storyRun.chapter.id);
+      return;
+    }
     const previous = mission;
     if (previous?.checkpoint) {
       setup('mission', previous.car);
@@ -1597,6 +1720,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     if (intro === 'gang') return zones.gang;
     if (intro === 'chase') return streetCarPoint;
     if (eventTime > 0) return zones.gang;
+    if (storyRun) return currentStoryStep().point;
     if (waypoint) return waypoint.point;
     if (!vehicle && distance(player.x, player.z, zones.spawn) < 25) return zones.car;
     return null;
@@ -1609,6 +1733,15 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
         coast.canLeave ? '轮渡已靠岸' : '正在横渡内海湾',
         coast.canLeave ? '点击下船返回岸上' : '到岸后可下船',
       ];
+    if (storyRun) {
+      const step = currentStoryStep();
+      const hint = step.type === 'talk' ? '靠近目标后按 E 或点按交互' : '跟随地图上的金色指引';
+      return [
+        storyRun.chapter.title + ' · ' + (storyRun.index + 1) + '/' + storyRun.chapter.steps.length,
+        step.label,
+        hint,
+      ];
+    }
     if (coast.game)
       return [
         '沙滩排球 · 先得 5 分胜',
@@ -1902,6 +2035,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     if (paused) return;
     updateRace(dt);
     if (paused) return;
+    updateStory();
+    if (paused) return;
     if (!vehicle) {
       if (player.cooldown > 0) player.cooldown = Math.max(0, player.cooldown - dt);
       if (player.reload > 0) {
@@ -2016,9 +2151,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   });
   canvas.addEventListener('webglcontextrestored', () => updateHud(true));
   return {
-    launch(mode) {
+    launch(mode, chapterId) {
       const started = alive;
       if (save.hospitalLoss !== null) arriveHospital();
+      else if (mode === 'story') startChapter(chapterId);
       else setup(mode);
       if (!started) requestAnimationFrame(animate);
     },

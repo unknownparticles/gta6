@@ -2,7 +2,7 @@
   "name": "GTA6-S城风云",
   "short_name": "S城风云",
   "lang": "zh-CN",
-  "description": "开车探索汕头风格的内海湾和两岸街区。",
+  "description": "开车探索S城风格的内海湾和两岸街区。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
@@ -12,6 +12,11 @@
   "icons": [
     { "src": "./icons/pwa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "./icons/pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "./icons/pwa-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    {
+      "src": "./icons/pwa-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ]
 }

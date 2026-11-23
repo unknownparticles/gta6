@@ -1,3 +1,4 @@
+import { chapters, chapterById, chapterUnlocked, welfareRewards } from './story.js';
 import { landmarks } from './city-layout.js';
 import './style.css';
 import { audioSystem } from './audio.js';
@@ -10,6 +11,7 @@ import {
   buyWeapon,
   claimDay,
   claimPack,
+  grantWeapon,
   hasWeapon,
   loadSave,
   localDate,
@@ -103,6 +105,12 @@ function refreshLobby() {
   $('#paint-count').textContent = String(save.skins.length);
   $('#mile-count').textContent = (save.meters / 1000).toFixed(1) + ' km';
   $('#equip-count').textContent = String(weapons.filter((_, index) => hasWeapon(save, index)).length);
+  const welfareReady = welfareRewards.some(
+    (item) => item.ready(save) && !save.welfareClaimed.includes(item.id),
+  );
+  document
+    .querySelectorAll('[data-open="welfare"]')
+    .forEach((entry) => entry.classList.toggle('reward-ready', welfareReady));
   const strip = $('#quick-days');
   strip.replaceChildren(
     ...days.map((_, index) => {
@@ -114,7 +122,7 @@ function refreshLobby() {
   );
   const ready = save.dates.length < days.length && !(save.dates.at(-1) >= localDate());
   $('.promo.sign').classList.toggle('notify', ready);
-  $('.promo.recharge').classList.toggle('notify', !save.claimed.includes(0));
+  $('.promo.recharge').classList.toggle('notify', !save.firstSix);
 }
 
 function rotationState() {
@@ -147,7 +155,9 @@ function rotationState() {
     if (!play.hidden) {
       game?.view(!next);
       if (!next && !loading && game) {
-        if (['fail', 'hospital', 'mission', 'race', 'context'].includes(view))
+        if (
+          ['fail', 'hospital', 'mission', 'chapterDone', 'dialogue', 'race', 'context'].includes(view)
+        )
           open(view, details, true);
         else open('pause', {}, true);
       }
@@ -175,6 +185,11 @@ const panelTitles = {
   'confirm-pack': '礼包详情',
   membership: '豪华月卡',
   sign: '七日签到',
+  welfare: '福利中心',
+  firstSix: '首充 6 元',
+  tasks: '任务中心',
+  dialogue: '剧情对话',
+  chapterDone: '章节完成',
   pass: '夜班通行证',
   garage: '晚钟车库',
   armory: '武器商店',
@@ -196,6 +211,7 @@ const panelTitles = {
 };
 
 function open(name, data = {}, keepFocus = false) {
+  if (name === 'confirm-pack' && Number(data.id) === 0) name = 'firstSix';
   if (name === 'hospital') {
     clearTimeout(toastTimer);
     $('#toast').hidden = true;
@@ -208,11 +224,17 @@ function open(name, data = {}, keepFocus = false) {
   if (!play.hidden && game) game.pause(true);
   $('#panel-kicker').textContent =
     name === 'profile' || name === 'register' || name === 'confirm-pack' ? '本机演示' : 'GTA6-S城风云';
-  $('#panel-title').textContent = panelTitles[name] || 'S城';
+  $('#panel-title').textContent = name === 'dialogue' ? data.chapter : panelTitles[name] || 'S城';
+  panel.classList.toggle('story-dialog', name === 'dialogue');
+  panel.querySelector('[data-panel-close]').hidden = name === 'dialogue';
   renderPanel(name, data);
   if (!panel.open) {
     panel.showModal();
-    panel.querySelector('[data-panel-close]').focus({ preventScroll: true });
+    const focus =
+      name === 'dialogue'
+        ? content.querySelector('[data-action="dialogue-next"]')
+        : panel.querySelector('[data-panel-close]');
+    focus.focus({ preventScroll: true });
   }
 }
 const go = (name) => 'data-open="' + name + '"';
@@ -290,10 +312,10 @@ function renderPanel(name, data) {
               paints[pack.paint].name +
               '</small>' +
               button(
-                save.claimed.includes(index) ? '已领取' : '查看礼包',
+                (index === 0 ? save.firstSix : save.claimed.includes(index)) ? '已领取' : '查看礼包',
                 go('confirm-pack') + ' data-id="' + index + '"',
                 primary,
-                save.claimed.includes(index),
+                index === 0 ? save.firstSix : save.claimed.includes(index),
               ) +
               '</article>',
           )
@@ -343,6 +365,140 @@ function renderPanel(name, data) {
           save.coins < pack.cost,
         ) +
         button('返回商城', go('shop')) +
+        '</div>'
+      );
+    },
+    firstSix() {
+      return (
+        '<div class="tile first-offer">' +
+        icon('gift') +
+        '<h3>首充 6 元 · 金色车手礼包</h3><p>金色涂装、电弧手枪与补给券。已有手枪会获得备用弹药。</p>' +
+        '<small>开服福利 · 实付 ¥0 · 每位车手限领一次</small></div>' +
+        button(
+          save.firstSix ? '已领取首充礼包' : '领取首充礼包',
+          command('first-six'),
+          primary,
+          save.firstSix,
+        )
+      );
+    },
+    welfare() {
+      return (
+        '<p>新手补给、七日签到和剧情达成奖励。</p><div class="activity-grid">' +
+        '<article class="tile"><b>七日签到</b><small>已签到 ' +
+        save.dates.length +
+        ' / 7 天</small>' +
+        button('前往签到', go('sign')) +
+        '</article><article class="tile"><b>首充 6 元</b><small>' +
+        (save.firstSix ? '礼包已领取' : '开服福利可领取') +
+        '</small>' +
+        button('查看首充', go('firstSix')) +
+        '</article></div><div class="row-list">' +
+        welfareRewards
+          .map((item) => {
+            const claimed = save.welfareClaimed.includes(item.id);
+            const ready = item.ready(save);
+            return (
+              '<article class="tile"><div><b>' +
+              item.title +
+              ' · ' +
+              item.payout +
+              ' 潮票</b><small>' +
+              item.detail +
+              '</small></div>' +
+              button(
+                claimed ? '已领取' : ready ? '领取' + item.title : '未达成',
+                command('welfare-reward') + ' data-id="' + item.id + '"',
+                ready ? primary : '',
+                claimed || !ready,
+              ) +
+              '</article>'
+            );
+          })
+          .join('') +
+        '</div>'
+      );
+    },
+    tasks() {
+      return (
+        '<div class="chapter-progress"><b>主线 · 内海湾往事</b><span>已通关 ' +
+        save.storyCompleted.length +
+        ' / ' +
+        chapters.length +
+        ' 章</span></div><div class="chapter-list">' +
+        chapters
+          .map((chapter, index) => {
+            const done = save.storyCompleted.includes(chapter.id);
+            const unlocked = chapterUnlocked(save, chapter.id);
+            const resume = save.storyCheckpoint?.id === chapter.id && save.storyCheckpoint.step > 0;
+            return (
+              '<article class="tile chapter-tile"><div><small class="chapter-area">第 ' +
+              (index + 1) +
+              ' 章 · ' +
+              chapter.area +
+              '</small><b>' +
+              chapter.title +
+              '</b><p>' +
+              chapter.summary +
+              '</p></div><div><small>首次通关 +' +
+              chapter.reward +
+              ' 潮票</small>' +
+              button(
+                unlocked ? (resume ? '继续章节' : done ? '重玩章节' : '开始章节') : '待解锁',
+                command('story') +
+                  ' data-id="' +
+                  chapter.id +
+                  '" aria-label="' +
+                  (resume ? '继续 ' : done ? '重玩 ' : '开始 ') +
+                  chapter.title +
+                  '"',
+                unlocked && !done ? primary : '',
+                !unlocked,
+              ) +
+              '</div></article>'
+            );
+          })
+          .join('') +
+        '</div>'
+      );
+    },
+    dialogue() {
+      const [speaker, line] = data.lines[data.index];
+      return (
+        '<div class="story-line" aria-live="polite">' +
+        icon(speaker === '车手' ? 'car' : 'user') +
+        '<div><b>' +
+        text(speaker) +
+        '</b><p>' +
+        text(line) +
+        '</p></div></div><div class="actions story-actions"><small>' +
+        (data.index + 1) +
+        ' / ' +
+        data.lines.length +
+        '</small>' +
+        button(
+          data.index + 1 < data.lines.length ? '继续对话' : '返回游戏',
+          command('dialogue-next'),
+          primary,
+        ) +
+        button('跳过本段', command('dialogue-skip')) +
+        '</div>'
+      );
+    },
+    chapterDone() {
+      const chapter = chapterById(data.id);
+      const next = chapters[chapters.indexOf(chapter) + 1];
+      return (
+        '<div class="tile"><b>' +
+        chapter.title +
+        '</b><small>' +
+        (data.reward ? '首次通关 +' + data.reward + ' 潮票' : '章节重玩已完成') +
+        '</small></div><div class="actions">' +
+        (next
+          ? button('下一章 · ' + next.title, command('story') + ' data-id="' + next.id + '"', primary)
+          : '') +
+        button('任务中心', go('tasks')) +
+        button('继续自由游戏', command('resume')) +
         '</div>'
       );
     },
@@ -611,6 +767,7 @@ function renderPanel(name, data) {
         '<div class="actions">' +
         button('继续游戏', command('resume'), primary) +
         button('全图', go('map')) +
+        button('任务中心', go('tasks')) +
         button('设置', go('settings')) +
         button('操作', go('help')) +
         button('脱困', command('recover')) +
@@ -633,7 +790,13 @@ function renderPanel(name, data) {
         '<p class="warning">' +
         text(data.message || '浏览器无法启动三维画面。') +
         '</p><div class="actions">' +
-        button('重试', 'data-start="' + text(data.mode || 'free') + '"', primary) +
+        button(
+          '重试',
+          data.mode === 'story'
+            ? command('story') + ' data-id="' + chapterById(data.selection)?.id + '"'
+            : 'data-start="' + text(data.mode || 'free') + '"',
+          primary,
+        ) +
         button('返回大厅', command('lobby')) +
         '</div>'
       );
@@ -650,7 +813,8 @@ function renderPanel(name, data) {
         data.reward +
         ' 潮票</b></p><div class="actions">' +
         button('继续自由驾驶', command('resume'), primary) +
-        button('重玩任务', 'data-start="mission"') +
+        button('下一章 · 最后一班轮渡', command('story') + ' data-id="pier"', primary) +
+        button('任务中心', go('tasks')) +
         button('查看车库', go('garage')) +
         '</div>'
       );
@@ -715,7 +879,7 @@ function renderPanel(name, data) {
   }
 }
 
-async function launch(mode, landmarkId) {
+async function launch(mode, selection) {
   if (blocked || loading) return;
   audio.unlock();
   loading = true;
@@ -752,8 +916,8 @@ async function launch(mode, landmarkId) {
     loading = false;
     view = '';
     panel.close();
-    game.launch(mode);
-    if (landmarkId) game.navigate(landmarkId);
+    game.launch(mode, selection);
+    if (mode !== 'story' && selection) game.navigate(selection);
     rotationState();
     if (blocked) game.view(false);
   } catch (error) {
@@ -761,7 +925,11 @@ async function launch(mode, landmarkId) {
     loading = false;
     play.hidden = true;
     lobby.hidden = false;
-    open('error', { mode, message: '三维画面启动失败。请确认浏览器已启用 WebGL 2，再试一次。' });
+    open('error', {
+      mode,
+      selection,
+      message: '三维画面启动失败。请确认浏览器已启用 WebGL 2，再试一次。',
+    });
   }
 }
 
@@ -777,6 +945,47 @@ function returnLobby() {
 
 function applyAction(action, id) {
   switch (action) {
+    case 'story':
+      if (chapterUnlocked(save, id)) void launch('story', id);
+      break;
+    case 'dialogue-next':
+    case 'dialogue-skip': {
+      if (view !== 'dialogue') break;
+      const current = details;
+      if (action === 'dialogue-next' && current.index + 1 < current.lines.length) {
+        current.index++;
+        renderPanel('dialogue', current);
+        content.querySelector('[data-action="dialogue-next"]').focus({ preventScroll: true });
+      } else {
+        closePanel();
+        current.done?.();
+      }
+      break;
+    }
+    case 'first-six':
+      if (!save.firstSix) {
+        save.firstSix = true;
+        claimPack(save, 0);
+        if (!grantWeapon(save, 0)) {
+          save.arsenal[0].stock = Math.min(weapons[0].stock * 3, save.arsenal[0].stock + 24);
+        }
+        save.perks++;
+        write();
+        open('firstSix');
+        toast('首充礼包已到账');
+      }
+      break;
+    case 'welfare-reward': {
+      const reward = welfareRewards.find((item) => item.id === id);
+      if (reward?.ready(save) && !save.welfareClaimed.includes(id)) {
+        save.welfareClaimed.push(id);
+        save.coins += reward.payout;
+        write();
+        open('welfare');
+        toast('已领取 ' + reward.payout + ' 潮票');
+      }
+      break;
+    }
     case 'login':
       if (save.id) {
         save.signedIn = true;
@@ -875,6 +1084,7 @@ function applyAction(action, id) {
 
 function dismissPanel() {
   if (loading) return;
+  if (view === 'dialogue') return;
   if (view === 'hospital') applyAction('discharge');
   else if (view === 'fail') applyAction('retry');
   else closePanel();
