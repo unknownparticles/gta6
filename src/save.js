@@ -18,6 +18,8 @@ const initial = () => ({
   trained: false,
   pulse: false,
   arsenal: [],
+  pickups: [],
+  membership: false,
   hospitalLoss: null,
   best: null,
   meters: 0,
@@ -33,7 +35,7 @@ export function loadSave(storage) {
     const loaded = raw ? JSON.parse(raw) : {};
     if (loaded && typeof loaded === 'object') {
       save = { ...save, ...loaded, settings: { ...save.settings, ...loaded.settings } };
-      for (const name of ['claimed', 'dates', 'owned', 'skins']) {
+      for (const name of ['claimed', 'dates', 'owned', 'skins', 'pickups']) {
         if (!Array.isArray(save[name])) save[name] = initial()[name];
       }
       if (!save.owned.includes(save.car) || !cars[save.car]) save.car = 'sedan';
@@ -130,9 +132,9 @@ export function claimDay(save, today = localDate()) {
 
 export function claimPack(save, id) {
   const pack = packs[id];
-  if (!pack || save.claimed.includes(id)) return false;
+  if (!pack || save.claimed.includes(id) || save.coins < pack.cost) return false;
   save.claimed.push(id);
-  save.coins += pack.coins;
+  save.coins += pack.coins - pack.cost;
   if (!save.skins.includes(pack.paint)) save.skins.push(pack.paint);
   return true;
 }

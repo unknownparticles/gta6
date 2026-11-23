@@ -97,9 +97,12 @@ function toast(message) {
 
 function refreshLobby() {
   $('#player-name').textContent = save.signedIn && save.nick ? save.nick : '未登记车手';
-  $('#profile-label').textContent = save.signedIn && save.id ? save.id : '模拟登录 / 注册';
+  $('#profile-label').textContent = save.signedIn && save.id ? save.id : '登录 / 注册';
   $('#vip').textContent = 'VIP ' + save.claimed.length;
   $('#coin-count').textContent = String(save.coins);
+  $('#paint-count').textContent = String(save.skins.length);
+  $('#mile-count').textContent = (save.meters / 1000).toFixed(1) + ' km';
+  $('#equip-count').textContent = String(weapons.filter((_, index) => hasWeapon(save, index)).length);
   const strip = $('#quick-days');
   strip.replaceChildren(
     ...days.map((_, index) => {
@@ -167,9 +170,10 @@ function closePanel(continuePlay = true) {
 
 const panelTitles = {
   profile: '港区身份登记',
-  register: '模拟注册',
+  register: '注册车手',
   shop: '潮票商城',
-  'confirm-pack': '模拟充值',
+  'confirm-pack': '礼包详情',
+  membership: '豪华月卡',
   sign: '七日签到',
   pass: '夜班通行证',
   garage: '晚钟车库',
@@ -248,12 +252,12 @@ function renderPanel(name, data) {
           '</b><small>本机试玩编号 ' +
           text(save.id) +
           '</small></div>'
-        : '<p>登记一个本机试玩身份。昵称和试玩编号保存在此浏览器。</p>';
+        : '<p>登记车手，继续在 S 城活动。昵称和进度保存在此浏览器。</p>';
       return (
         greeting +
         '<div class="actions">' +
-        (save.id ? button('模拟登录', command('login'), primary) : '') +
-        button(save.id ? '修改试玩昵称' : '模拟注册', go('register'), save.id ? '' : primary) +
+        (save.id ? button('登录', command('login'), primary) : '') +
+        button(save.id ? '修改试玩昵称' : '注册车手', go('register'), save.id ? '' : primary) +
         button('游客开玩', command('guest')) +
         '</div>'
       );
@@ -270,12 +274,12 @@ function renderPanel(name, data) {
       return (
         '<p>潮票余额 <b>' +
         save.coins +
-        '</b>。本机演示 · 实付 0 元。</p><div class="row-grid">' +
+        '</b></p><div class="row-grid">' +
         packs
           .map(
             (pack, index) =>
-              '<article class="tile"><small>标价梗 ¥' +
-              pack.parody +
+              '<article class="tile"><small>' +
+              (pack.cost ? pack.cost + ' 潮票' : '开服好礼') +
               '</small><strong>' +
               pack.name +
               '</strong><span>' +
@@ -286,7 +290,7 @@ function renderPanel(name, data) {
               paints[pack.paint].name +
               '</small>' +
               button(
-                save.claimed.includes(index) ? '已领取' : '模拟领取 · 实付 0 元',
+                save.claimed.includes(index) ? '已领取' : '查看礼包',
                 go('confirm-pack') + ' data-id="' + index + '"',
                 primary,
                 save.claimed.includes(index),
@@ -321,18 +325,36 @@ function renderPanel(name, data) {
       const pack = packs[index];
       if (!pack) return '<p>礼包暂不可用。</p>' + button('返回商城', go('shop'));
       if (save.claimed.includes(index))
-        return '<p>' + pack.name + '已领取。实付 0 元。</p>' + button('返回商城', go('shop'));
+        return '<p>' + pack.name + '已领取。</p>' + button('返回商城', go('shop'));
       return (
         '<div class="tile win"><b>' +
         pack.name +
-        ' · 实付 0 元</b><span>' +
+        '</b><span>' +
         pack.coins +
         ' 潮票和「' +
         paints[pack.paint].name +
-        '」涂装</span><small>本机演示礼包</small></div><div class="actions">' +
-        button('确认模拟领取 · 0 元', command('pack') + ' data-id="' + index + '"', primary) +
+        '」涂装</span><small>' +
+        (pack.cost ? '兑换需 ' + pack.cost + ' 潮票' : '开服好礼，每位车手限领一次') +
+        '</small></div><div class="actions">' +
+        button(
+          pack.cost ? '兑换礼包' : '领取礼包',
+          command('pack') + ' data-id="' + index + '"',
+          primary,
+          save.coins < pack.cost,
+        ) +
         button('返回商城', go('shop')) +
         '</div>'
+      );
+    },
+    membership() {
+      const active = save.membership > Date.now();
+      return (
+        '<div class="tile"><b>30 天会员权益</b><small>开通后领取 3 张武器补给券。</small>' +
+        (active
+          ? '<small>有效期至 ' + new Date(save.membership).toLocaleDateString('zh-CN') + '</small>'
+          : '<small>开通需 128 潮票</small>') +
+        '</div>' +
+        button(active ? '已开通' : '开通月卡', command('member'), primary, active || save.coins < 128)
       );
     },
     sign() {
@@ -390,7 +412,7 @@ function renderPanel(name, data) {
               '</small></div>',
           )
           .join('') +
-        '</div><p>当前模拟会员等级 VIP ' +
+        '</div><p>当前会员等级 VIP ' +
         save.claimed.length +
         '。已获得 ' +
         save.skins.length +
@@ -512,7 +534,7 @@ function renderPanel(name, data) {
       );
     },
     help() {
-      return '<h3>电脑键鼠</h3><p><kbd>W A S D</kbd> 步行或驾驶　<kbd>E</kbd> 交互、抢车或上下车　<kbd>Shift</kbd> 冲刺　<kbd>空格</kbd> 手刹</p><p>按住鼠标拖动转动镜头，双击画面可请求鼠标锁定。左键或 <kbd>Enter</kbd> 出拳或开火，右键瞄准，<kbd>Q</kbd> 在徒手和已解锁武器间切换，<kbd>R</kbd> 装填。</p><p><kbd>M</kbd> 地图　<kbd>Esc</kbd> 暂停　长按 <kbd>T</kbd> 脱困</p><h3>手机与平板横屏</h3><p>左手摇杆移动或转向，右侧空白区拖动视角。用右下的攻击按钮出拳或开火，靠近街车后点击抢车提示。驾驶时可以同时转向和踩油门。</p><h3>警方通缉</h3><p>粉色标记是巡逻车。脱离游戏内的视野后会进入搜索倒计时，重新被发现会暂停消星。</p>';
+      return '<h3>电脑键鼠</h3><p><kbd>W A S D</kbd> 步行或驾驶　<kbd>E</kbd> 交互、拾取、抢车或上下车　<kbd>Shift</kbd> 奔跑　<kbd>空格</kbd> 跳跃 / 手刹　<kbd>V</kbd> 切换倒挡</p><p>按住鼠标拖动转动镜头，双击画面可请求鼠标锁定。左键或 <kbd>Enter</kbd> 出拳或开火，右键瞄准，<kbd>Q</kbd> 在徒手和已解锁武器间切换，<kbd>R</kbd> 装填。</p><p><kbd>M</kbd> 地图　<kbd>Esc</kbd> 暂停　长按 <kbd>T</kbd> 脱困</p><h3>手机与平板横屏</h3><p>左手摇杆移动或转向，右侧空白区拖动视角。用右下的攻击按钮出拳或开火，靠近街车后点击抢车提示。驾驶时可以同时转向和踩油门。停稳后切换 D / R。海边可以游泳，轮渡靠岸后按交互上船或下船。排球用攻击键发球和回球。</p><h3>警方通缉</h3><p>粉色标记是巡逻车。脱离游戏内的视野后会进入搜索倒计时，重新被发现会暂停消星。</p>';
     },
     notice() {
       return messages
@@ -527,6 +549,8 @@ function renderPanel(name, data) {
         '<div class="actions">' +
         [
           ['武器', 'armory'],
+          ['车库', 'garage'],
+          ['豪华月卡', 'membership'],
           ['街区地图', 'districts'],
           ['通行证', 'pass'],
           ['设置', 'settings'],
@@ -772,7 +796,17 @@ function applyAction(action, id) {
         write();
         audio.cue('win');
         open('shop');
-        toast('模拟回执 · 实付 0 元，礼包已到账');
+        toast('礼包已到账');
+      }
+      break;
+    case 'member':
+      if (!(save.membership > Date.now()) && save.coins >= 128) {
+        save.coins -= 128;
+        save.perks += 3;
+        save.membership = Date.now() + 30 * 86_400_000;
+        write();
+        open('membership');
+        toast('月卡权益已到账');
       }
       break;
     case 'sign':
@@ -902,7 +936,7 @@ panel.addEventListener('submit', (event) => {
   save.signedIn = true;
   write();
   closePanel();
-  toast('模拟注册完成 · ' + save.nick);
+  toast('注册车手完成 · ' + save.nick);
 });
 
 panel.addEventListener('input', (event) => {

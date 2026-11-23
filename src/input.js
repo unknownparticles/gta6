@@ -102,6 +102,8 @@ export function createInput(canvas, container, action, canPlay) {
   const actions = {
     KeyE: 'use',
     KeyQ: 'switch',
+    KeyV: 'gear',
+    Space: 'jump',
     KeyR: 'reload',
     Escape: 'pause',
     KeyM: 'map',

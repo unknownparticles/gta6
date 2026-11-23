@@ -43,3 +43,4 @@
 | `public/media/synth-wave.mp3` | Alex McCulloch，CC0。取原曲 00:11 起的 36 秒，加淡入淡出，以 96 kbps 发布。 | [Synth Wave](https://opengameart.org/content/synth-wave-alex-mcculloch-august-172021) |
 | `public/media/harbor.webp`、`public/media/garage.webp`、`public/media/icon.png` | 大厅封面和车库预览由本作海滨场景和车模渲染，站点图标截取自车库预览。 | [素材渲染页面](scripts/poster.html) |
 | `public/media/shantou-bay.webp` | 从游戏内的内海湾场景渲染的新大厅封面。模型、地标和布局采用游戏中的抽象化设计。 | [封面渲染页面](scripts/poster.html) |
+| `public/media/shantou-lobby.webp` | 游戏内人民广场、跨湾大桥、原创车手角色和车模渲染。 | [封面渲染页面](scripts/poster.html?lobby) |

@@ -3,9 +3,9 @@ const limit = (value, min, max) => Math.min(max, Math.max(min, value));
 const signedAngle = (angle) => Math.atan2(Math.sin(angle), Math.cos(angle));
 
 export function drive(car, spec, input, dt) {
-  const { gas, brake, handbrake, steering } = input;
+  const { gas, brake, handbrake, steering, reverse } = input;
   const running = car.hp > 0;
-  const direction = gas === brake ? 0 : gas ? 1 : -1;
+  const direction = brake && reverse ? 0 : gas === brake ? 0 : gas && !reverse ? 1 : -1;
   if (direction !== car.driveInput) {
     car.driveInput = direction;
     car.reverseWait = 0;
@@ -13,11 +13,11 @@ export function drive(car, spec, input, dt) {
 
   if (!running) {
     car.speed *= Math.exp(-4 * dt);
-  } else if (gas && brake) {
+  } else if (brake && (gas || reverse)) {
     car.speed = Math.sign(car.speed) * Math.max(0, Math.abs(car.speed) - 28 * dt);
   } else if (direction && direction * car.speed < 0) {
     car.speed = Math.sign(car.speed) * Math.max(0, Math.abs(car.speed) - 25 * dt);
-  } else if (direction < 0 && car.speed === 0 && car.reverseWait < 0.24) {
+  } else if (!reverse && direction < 0 && car.speed === 0 && car.reverseWait < 0.24) {
     car.reverseWait += dt;
   } else if (direction) {
     const condition = 0.65 + (0.35 * car.hp) / 100;

@@ -1,4 +1,5 @@
 export const mapBounds = { west: -300, east: 350, north: -215, south: 425 };
+export const districtBorderX = 106;
 
 export const northShore = [
   [-278, 157],
@@ -145,6 +146,30 @@ export const interiors = [
 ];
 
 export const landmarks = [
+  {
+    id: 'ferry-north',
+    name: '人民广场轮渡',
+    point: [34, 167],
+    color: '#ffdf96',
+    icon: 'map',
+    description: '金平区候船点，搭船前往礐石轮渡。',
+  },
+  {
+    id: 'ferry-south',
+    name: '礐石轮渡',
+    point: [-34, 273],
+    color: '#ffdf96',
+    icon: 'map',
+    description: '濠江区候船点，搭船前往人民广场轮渡。',
+  },
+  {
+    id: 'beach',
+    name: '东海岸沙滩',
+    point: [286, 133],
+    color: '#ffd086',
+    icon: 'target',
+    description: '可以游泳，或和本地球员打一局沙滩排球。',
+  },
   {
     id: 'tower',
     name: '电视塔',
@@ -317,4 +342,23 @@ export function interiorAt(x, z) {
   return interiors.find(
     (room) => Math.abs(x - room.x) < room.w / 2 - 0.3 && Math.abs(z - room.z) < room.d / 2 - 0.3,
   );
+}
+
+export const ferryStops = [
+  { name: '人民广场轮渡', pier: [34, 167], berth: [34, 182], district: '金平区' },
+  { name: '礐石轮渡', pier: [-34, 273], berth: [-34, 258], district: '濠江区' },
+];
+
+export const beach = { court: [286, 124], spawn: [286, 133], water: [304, 170] };
+
+export function canSwimAt(x, z) {
+  if (bridgeAt(x, z) || landAt(x, z)) return false;
+  return x >= -254 && x <= 343 && z >= 139 && z <= 308;
+}
+
+export function administrativeDistrict(x, z) {
+  if (bridgeAt(x, z)) return '';
+  if (insidePolygon(x, z, southBank)) return '濠江区';
+  if (insidePolygon(x, z, northBank)) return x >= districtBorderX ? '龙湖区' : '金平区';
+  return '';
 }

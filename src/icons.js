@@ -9,6 +9,8 @@ const paths = {
   exit: 'M10 20H4V4h6m4 4 4 4-4 4m-6-4h13',
   key: 'M9 14a5 5 0 1 0-3-4.6 5 5 0 0 0 1 3l-4 4V21h4v-3h3v-3l1-1M13 8h.01',
   pedal: 'M9 4h8l-2 15H7L9 4zm2 4h3m-4 4h3m-4 4h3',
+  ferry: 'M5 14l7-4 7 4-2 5H7zm2-2V6h10v6m-5-6V3M3 21c2 0 2-1 4-1s2 1 5 1 3-1 5-1 2 1 4 1',
+  jump: 'M12 4l-4 4m4-4 4 4m-4-4v10m-6 5h12',
   brake: 'M5 5h14v12H5z M8 9h8m-8 4h8m-4 4v4',
   reverse: 'M4 9v5h5M4 14a8 8 0 1 1 4 5',
   handbrake:

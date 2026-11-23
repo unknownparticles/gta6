@@ -4,6 +4,8 @@ import {
   bridgeAt,
   bridges,
   coastRoads,
+  districtBorderX,
+  ferryStops,
   landmarks,
   mapBounds,
   northBank,
@@ -105,6 +107,12 @@ export function drawMap(canvas, state = {}, detailed = false) {
     ctx.closePath();
     ctx.fillStyle = color;
     ctx.fill();
+    if (bank === northBank) {
+      ctx.save();
+      ctx.clip();
+      rx(districtBorderX, mapBounds.north, mapBounds.east - districtBorderX, 410, '#28304a');
+      ctx.restore();
+    }
     ctx.strokeStyle = '#647994';
     ctx.stroke();
   }
@@ -123,6 +131,15 @@ export function drawMap(canvas, state = {}, detailed = false) {
   }
   for (const bridge of bridges)
     rx(bridge.x - 5.5, bridge.start, 11, bridge.end - bridge.start, '#b696ae');
+  ctx.lineWidth = detailed ? 1.8 : 1;
+  ctx.setLineDash([4, 4]);
+  ctx.strokeStyle = '#a7dff1';
+  ctx.beginPath();
+  ferryStops.forEach(({ berth: [x, z] }, index) =>
+    index ? ctx.lineTo(left(x), top(z)) : ctx.moveTo(left(x), top(z)),
+  );
+  ctx.stroke();
+  ctx.setLineDash([]);
   if (state.alert?.level && state.alert.lastSeen) {
     const { lastSeen, patrols, left: searchTime, level } = state.alert;
     ctx.strokeStyle = searchTime ? '#9bc8fc' : '#fb83a7';
@@ -148,6 +165,13 @@ export function drawMap(canvas, state = {}, detailed = false) {
   if (detailed) {
     ctx.font = '700 ' + Math.round(w * 0.025) + 'px sans-serif';
     ctx.fillStyle = '#c4b1cb';
+    for (const [name, x, z] of [
+      ['金平区', -121, -124],
+      ['龙湖区', 143, -124],
+      ['濠江区', 65, 350],
+    ]) {
+      ctx.fillText(name, left(x), top(z));
+    }
     for (const [x, z] of [
       [-169, 20],
       [-61, -109],

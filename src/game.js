@@ -1,6 +1,7 @@
 import * as T from 'three';
 import { cars, districtAt, paints, raceRoute, roads, weapons, zones } from './data.js';
-import { landmarks } from './city-layout.js';
+import { administrativeDistrict, beach, canSwimAt, ferryStops, landmarks } from './city-layout.js';
+import { createCoastActivities } from './coast-activities.js';
 import { drive, pedestrianContact, vehicleContact } from './driving.js';
 import { setIcon } from './icons.js';
 import { createInput } from './input.js';
@@ -56,6 +57,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   onLoad('正在布置城市道路');
   const scene = new T.Scene();
   const city = makeCity(scene);
+  const coast = createCoastActivities(scene, personModel);
+  const pickups = [];
   const camera = new T.PerspectiveCamera(60, 1, 0.18, 1600);
   const cameraTarget = new T.Vector3();
   const cameraWanted = new T.Vector3();
@@ -172,8 +175,13 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   }
 
   const pedestrians = [];
-  function addPed(x, z, color, gang = '', axis = 'z', event = false) {
+  function addPed(x, z, color, gang = '', axis = 'z', event = false, role = '') {
     const model = personModel(color, pedestrians.length);
+    if (role === '登山客' || role === '救生员' || role === '渔民') {
+      const cap = new T.Mesh(new T.BoxGeometry(0.45, 0.1, 0.42), new T.MeshStandardMaterial({ color }));
+      cap.position.set(0, 1.83, -0.045);
+      model.group.add(cap);
+    }
     scene.add(model.group);
     pedestrians.push({
       ...model,
@@ -183,6 +191,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       axis,
       gang,
       event,
+      role,
       flee: 0,
       angry: 0,
       health: 100,
@@ -214,6 +223,12 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   addPed(135, -51, 0xe08656, '锈锚');
   addPed(14, 20, 0x42b9ae, '盐线', 'x', true);
   addPed(25, 25, 0xe08656, '锈锚', 'x', true);
+  addPed(28, 160, 0xc28c59, '', 'x', false, '广场散步的居民');
+  addPed(-233, 128, 0x80ab61, '', 'x', false, '渔民');
+  addPed(276, 141, 0xef6156, '', 'z', false, '救生员');
+  addPed(300, 133, 0x62aef2, '', 'z', false, '海边游客');
+  addPed(-43, 322, 0xe49a52, '', 'z', false, '登山客');
+  addPed(-23, 346, 0x7a9f82, '', 'x', false, '登山客');
 
   traffic.forEach((car, index) => {
     const model = personModel(0xb98899, index);
@@ -221,6 +236,24 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     scene.add(model.group);
     Object.assign(car, { driver: model, driverTimer: 0 });
   });
+
+  for (const [id, point, kind, value] of [
+    ['garage-cash', [4, 93], 'cash', 35],
+    ['square-cash', [34, 160], 'cash', 70],
+    ['beach-kit', [297, 139], 'kit', 45],
+    ['wetland-ammo', [-225, 124], 'ammo', 35],
+    ['mountain-equip', [-28, 348], 'weapon', 0],
+    ['east-cash', [258, 136], 'cash', 90],
+  ]) {
+    const mesh = new T.Mesh(
+      kind === 'cash'
+        ? new T.CylinderGeometry(0.38, 0.38, 0.14, 12)
+        : new T.BoxGeometry(0.72, 0.39, 0.5),
+      new T.MeshBasicMaterial({ color: kind === 'cash' ? 0xffdc7a : 0x8ff8d2 }),
+    );
+    scene.add(mesh);
+    pickups.push({ id, point, kind, value, mesh });
+  }
 
   const support = new T.Group();
   const drone = new T.Mesh(
@@ -296,8 +329,12 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   let viewActive = true;
   let vehicle;
   let waypoint;
+  let volleyRewarded = false;
   const owned = [];
   const player = {
+    jump: 0,
+    lift: 0,
+    swimming: false,
     x: 0,
     z: 0,
     yaw: 0,
@@ -367,6 +404,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   function resetCarMotion(car) {
     car.vx = car.vz = car.kickX = car.kickZ = car.steer = 0;
     car.driveInput = car.reverseWait = 0;
+    car.reverseGear = false;
     car.travelYaw = car.yaw;
     car.impactUntil = 0;
   }
@@ -403,6 +441,11 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   function setup(mode, spawnCar = save.car) {
     scene.fog.density = 0.0037;
     waypoint = null;
+    coast.reset();
+    volleyRewarded = false;
+    player.jump = player.lift = 0;
+    player.swimming = false;
+    for (const item of pickups) item.mesh.visible = !save.pickups.includes(item.id);
     alive = true;
     intro = mode;
     race = null;
@@ -463,9 +506,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
               : mode === 'hospital'
                 ? zones.hospital
                 : zones.spawn;
-      [player.x, player.z] = spawn;
+      [player.x, player.z] =
+        mode === 'beach' ? beach.spawn : mode === 'ferry' ? ferryStops[0].pier : spawn;
     }
-    player.yaw = cameraYaw = 0;
+    player.yaw = cameraYaw = mode === 'ferry' ? Math.PI : 0;
     cameraPitch = 0.1;
     lastCameraInput = 0;
     cameraShake = 0;
@@ -496,6 +540,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     player.aiming = false;
     player.reload = 0;
     car.travelYaw = car.yaw;
+    car.reverseGear = false;
     car.steer = car.driveInput = car.reverseWait = 0;
     if (!car.stolen && car.type === 'van' && !save.owned.includes('van')) {
       save.owned.push('van');
@@ -595,6 +640,50 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       return Math.abs(vehicle.speed) <= 3.5 && !race
         ? { text: '下车', icon: 'exit', run: exitCar }
         : null;
+    if (coast.riding) {
+      if (!coast.canLeave) return null;
+      return {
+        text: '下船 · ' + ferryStops[coast.dock].name,
+        icon: 'exit',
+        run: () => {
+          [player.x, player.z] = coast.leave();
+          callbacks.toast('已抵达' + administrativeDistrict(player.x, player.z));
+        },
+      };
+    }
+    if (player.swimming) return null;
+    const stopIndex = ferryStops.findIndex((stop) => within(stop.pier, 4.5));
+    if (stopIndex >= 0 && coast.dock === stopIndex) {
+      return {
+        text: '搭乘轮渡',
+        icon: 'map',
+        run: () => {
+          coast.board();
+          callbacks.toast('已登船，轮渡即将出发');
+        },
+      };
+    }
+    if (within(beach.spawn, 8) && !mission && !race && !alert.level && !coast.game) {
+      return {
+        text: '开始沙滩排球',
+        icon: 'target',
+        run: () => {
+          coast.start();
+          volleyRewarded = false;
+        },
+      };
+    }
+    if (coast.game && coast.status === 'over' && within(beach.spawn, 27)) {
+      return { text: '结束本局', icon: 'finish', run: () => coast.stop() };
+    }
+    const item = pickups.find((candidate) => candidate.mesh.visible && within(candidate.point, 2.6));
+    if (item && !coast.game) {
+      return {
+        text: item.kind === 'cash' ? '拾取现金 +' + item.value : '拾取装备',
+        icon: item.kind === 'cash' ? 'coin' : 'box',
+        run: () => collect(item),
+      };
+    }
     const nearby = owned.find((car) => distance(x, z, [car.x, car.z]) < 5.3);
     if (nearby)
       return { text: '上车 · ' + cars[nearby.type].name, icon: 'car', run: () => enterCar(nearby) };
@@ -649,6 +738,32 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       };
     }
     return null;
+  }
+
+  function collect(item) {
+    if (save.pickups.includes(item.id)) return;
+    save.pickups.push(item.id);
+    item.mesh.visible = false;
+    let message = '已拾取装备';
+    if (item.kind === 'cash') {
+      save.coins += item.value;
+      message = '现金 +' + item.value;
+    } else if (item.kind === 'kit') {
+      player.hp = Math.min(100, player.hp + item.value);
+      message = '医疗包 · 恢复生命';
+    } else if (item.kind === 'weapon' && grantWeapon(save, item.value)) {
+      player.gear = item.value;
+      message = '已拾取' + weapons[item.value].name;
+    } else {
+      save.arsenal[0].stock = Math.min(
+        weapons[0].stock * 3,
+        save.arsenal[0].stock + (item.kind === 'ammo' ? item.value : 24),
+      );
+      message = '备用弹药已入库';
+    }
+    store.write();
+    audio.cue('mark');
+    callbacks.toast(message);
   }
 
   function completeMission() {
@@ -785,7 +900,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   }
 
   function fire() {
-    if (vehicle || player.reload || player.cooldown > 0) return;
+    if (vehicle || player.swimming || coast.riding || player.reload || player.cooldown > 0) return;
     if (player.gear < 0) {
       punch();
       return;
@@ -1356,6 +1471,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       pedestrian.group.position.set(pedestrian.x, 0, pedestrian.z);
       pedestrian.group.rotation.y = yaw;
       pedestrian.walk(time + pedestrian.phase, speed, hostile);
+      pedestrian.group.position.y += city.height(pedestrian.x, pedestrian.z);
     }
   }
 
@@ -1363,6 +1479,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     const car = vehicle;
     const input = {
       gas: held.has('KeyW') || held.has('ArrowUp') || held.has('gas'),
+      reverse: car.reverseGear,
       brake: held.has('KeyS') || held.has('ArrowDown') || held.has('reverse'),
       handbrake: held.has('Space') || held.has('hand'),
       steering: clamp(
@@ -1401,15 +1518,24 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     const norm = Math.max(1, Math.hypot(sideways, ahead));
     sideways /= norm;
     ahead /= norm;
-    const speed = held.has('ShiftLeft') || held.has('ShiftRight') || held.has('sprint') ? 8.6 : 4.7;
+    const sprint = held.has('ShiftLeft') || held.has('ShiftRight') || held.has('sprint');
+    const speed = player.swimming ? (sprint ? 4.8 : 3.4) : sprint ? 8.6 : 4.7;
     const [fx, fz] = forward(cameraYaw);
     const dx = (fx * ahead + Math.cos(cameraYaw) * sideways) * speed * dt;
     const dz = (fz * ahead - Math.sin(cameraYaw) * sideways) * speed * dt;
     const startX = player.x;
     const startZ = player.z;
-    if (city.clear(player.x + dx, player.z, 0.48)) player.x += dx;
-    if (city.clear(player.x, player.z + dz, 0.48)) player.z += dz;
+    if (city.clear(player.x + dx, player.z, 0.48, false, true)) player.x += dx;
+    if (city.clear(player.x, player.z + dz, 0.48, false, true)) player.z += dz;
     moving = Math.hypot(player.x - startX, player.z - startZ) / dt;
+    player.swimming = canSwimAt(player.x, player.z);
+    if (player.swimming) {
+      player.jump = player.lift = 0;
+    } else if (player.lift || player.jump) {
+      player.lift -= dt * 18;
+      player.jump += player.lift * dt;
+      if (player.jump <= 0) player.jump = player.lift = 0;
+    }
     if (player.aiming || pad.aiming) {
       player.yaw = cameraYaw;
     } else if (moving > 0.2) {
@@ -1445,6 +1571,12 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     callbacks.result('race', { elapsed, best, reward });
   }
 
+  function playerGround() {
+    if (coast.riding) return coast.elevation;
+    if (player.swimming) return -1.72;
+    return city.height(player.x, player.z) + player.jump;
+  }
+
   function destination() {
     if (mission) {
       if (mission.stage === 'escape') {
@@ -1471,6 +1603,27 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   }
 
   function displayObjective(target) {
+    if (coast.riding)
+      return [
+        '广礐轮渡',
+        coast.canLeave ? '轮渡已靠岸' : '正在横渡内海湾',
+        coast.canLeave ? '点击下船返回岸上' : '到岸后可下船',
+      ];
+    if (coast.game)
+      return [
+        '沙滩排球 · 先得 5 分胜',
+        coast.game.player + '  :  ' + coast.game.opponent,
+        coast.message(),
+      ];
+    if (player.swimming) return ['内海湾', '游泳', '用方向键或摇杆划水，靠岸自动上岸'];
+    const dockIndex = ferryStops.findIndex((stop) => distance(player.x, player.z, stop.pier) <= 7);
+    if (!vehicle && dockIndex >= 0)
+      return [
+        ferryStops[dockIndex].district,
+        ferryStops[dockIndex].name,
+        coast.dock === dockIndex ? '轮渡已到站' : '候船中',
+      ];
+
     if (mission) return info[mission.stage].slice(0, 3);
     if (race) {
       return race.count > 0
@@ -1503,6 +1656,11 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
         remaining < 8 ? waypoint.description : '距地标 ' + remaining + ' 米',
       ];
     }
+    const local = pedestrians.find(
+      (person) => person.role && Math.hypot(person.x - player.x, person.z - player.z) < 4.5,
+    );
+    if (!vehicle && local && !relation)
+      return ['街区居民', local.role, districtAt(player.x, player.z).name];
     if (relation) return ['街区居民', relation, '远离后，街区会恢复日常活动'];
     if (!vehicle && target)
       return ['自由模式', '在晚钟车库附近找辆车', '靠近自有车可上车，靠近街车可抢车'];
@@ -1514,6 +1672,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     ui['district-mark'].textContent = current.mark;
     ui['district-mark'].style.color = current.color;
     ui.district.textContent = current.name;
+    ui['district-area'].textContent = administrativeDistrict(player.x, player.z) || '内海湾';
+    stage.classList.toggle('swimming', player.swimming);
+    stage.classList.toggle('aboard', coast.riding);
+    stage.classList.toggle('volley', Boolean(coast.game));
     const target = destination();
     const objective = displayObjective(target);
     ui['objective-label'].textContent = objective[0];
@@ -1546,19 +1708,34 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     ui['game-gloss'].classList.toggle('hurt', player.hurt > 0);
     ui['wallet-value'].textContent = String(save.coins);
     ui['health-value'].textContent = Math.ceil(player.hp) + ' 生命';
-    const attackLabel = player.gear < 0 ? '出拳' : '开火';
-    const weaponIcon = player.gear < 0 ? 'fist' : player.gear === 0 ? 'blaster' : 'pulse';
+    const attackLabel = coast.game ? '击球' : player.gear < 0 ? '出拳' : '开火';
+    const weaponIcon = coast.game
+      ? 'target'
+      : player.gear < 0
+        ? 'fist'
+        : player.gear === 0
+          ? 'blaster'
+          : 'pulse';
     ui['touch-attack'].setAttribute('aria-label', attackLabel);
     ui['touch-attack-label'].textContent = attackLabel;
     setIcon(ui['touch-attack-icon'], weaponIcon);
     setIcon(ui['weapon-icon'], weaponIcon);
     if (vehicle) {
-      const reversing = vehicle.speed < -0.3;
-      ui['touch-brake-label'].textContent = reversing ? '倒车' : '刹车';
-      setIcon(ui['touch-brake-icon'], reversing ? 'reverse' : 'brake');
+      const reversing = vehicle.reverseGear || vehicle.speed < -0.3;
+      ui['gear-switch'].setAttribute('aria-pressed', String(vehicle.reverseGear));
+      ui['touch-brake-label'].textContent = reversing && !vehicle.reverseGear ? '倒车' : '刹车';
+      setIcon(ui['touch-brake-icon'], reversing && !vehicle.reverseGear ? 'reverse' : 'brake');
       ui.speed.textContent = String(Math.round(Math.abs(vehicle.speed) * 3.6));
       ui.gear.textContent =
-        vehicle.hp <= 0 ? '停驶' : Math.abs(vehicle.speed) < 0.3 ? 'N' : vehicle.speed < 0 ? 'R' : 'D';
+        vehicle.hp <= 0
+          ? '停驶'
+          : vehicle.reverseGear
+            ? 'R'
+            : Math.abs(vehicle.speed) < 0.3
+              ? 'N'
+              : vehicle.speed < 0
+                ? 'R'
+                : 'D';
       ui.condition.style.width = vehicle.hp + '%';
       ui['car-label'].textContent = cars[vehicle.type].name + (vehicle.stolen ? ' · 街车' : '');
       ui['drive-status'].textContent =
@@ -1583,7 +1760,13 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
         punch: player.punch,
         health: player.hp,
         carHealth: vehicle?.hp ?? null,
-        elevation: city.height(player.x, player.z),
+        elevation: playerGround(),
+        jumping: player.jump,
+        swimming: player.swimming,
+        ferry: coast.riding,
+        dock: coast.dock,
+        volleyball: coast.game,
+        reverse: vehicle?.reverseGear ?? false,
         interior: city.interior(player.x, player.z)?.id ?? null,
         impact: lastCrash > 0 ? lastVehicleImpact : '',
         hitPedestrians: lastPedestrianImpact,
@@ -1610,7 +1793,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     const enclosed = !vehicle && city.interior(player.x, player.z);
     const dist = vehicle ? 8.8 : enclosed ? 2.9 : aiming ? 3.0 : 5.1;
     const high = vehicle ? 4.35 : enclosed ? 2.25 : aiming ? 2.18 : 3.2;
-    const elevation = city.height(player.x, player.z);
+    const elevation = playerGround();
     const [fx, fz] = forward(cameraYaw);
     const strafe = aiming ? 0.72 : 0;
     cameraWanted.set(
@@ -1630,6 +1813,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
           T.MathUtils.lerp(player.x, cameraWanted.x, amount),
           T.MathUtils.lerp(player.z, cameraWanted.z, amount),
           0.18,
+          false,
+          player.swimming || coast.riding,
         )
       ) {
         const safe = Math.max(0.15, (i - 1) / steps);
@@ -1676,8 +1861,25 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     }
     if (vehicle) {
       if (!(race?.count > 0)) updateDriving(dt);
-    } else {
+    } else if (!coast.riding) {
       updateWalking(dt);
+    } else moving = 0;
+    coast.update(dt, time, player);
+    if (coast.game && Math.hypot(player.x - beach.court[0], player.z - beach.court[1]) > 30)
+      coast.stop();
+    if (coast.game && coast.status === 'over' && !volleyRewarded) {
+      volleyRewarded = true;
+      if (coast.game.player === 5) {
+        save.coins += 100;
+        store.write();
+        callbacks.toast('排球获胜 · +100 潮票');
+      }
+    }
+    for (const item of pickups) {
+      if (!item.mesh.visible) continue;
+      const [x, z] = item.point;
+      item.mesh.position.set(x, city.height(x, z) + 0.55 + Math.sin(time * 2.2) * 0.14, z);
+      item.mesh.rotation.y = time * 1.8;
     }
     if (paused) return;
     updateTraffic(dt);
@@ -1694,7 +1896,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       player.gear >= 0 && (pad.aiming || player.aiming || player.cooldown > 0),
       Math.sin((player.punch / 0.3) * Math.PI),
     );
-    playerModel.group.position.y += city.height(player.x, player.z);
+    playerModel.group.position.y += playerGround();
+    playerModel.group.rotation.x = player.swimming ? -1.18 + Math.sin(time * 5) * 0.08 : 0;
     updatePedestrians(dt);
     if (paused) return;
     updateRace(dt);
@@ -1711,7 +1914,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
           store.write();
         }
       }
-      if (held.has('fire') || held.has('Enter') || pad.fire) fire();
+      if (!coast.game && (held.has('fire') || held.has('Enter') || pad.fire)) fire();
     }
     if (held.has('KeyT')) {
       recoverPressed += dt;
@@ -1770,10 +1973,29 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
         player.reload = 0;
         updateHud(true);
       }
+    } else if (
+      name === 'jump' &&
+      !vehicle &&
+      !player.swimming &&
+      !coast.riding &&
+      !player.jump &&
+      !player.lift
+    ) {
+      player.lift = 6.1;
+    } else if (name === 'gear' && vehicle) {
+      if (Math.abs(vehicle.speed) > 1.1) callbacks.toast('请先停车再切换挡位');
+      else {
+        vehicle.reverseGear = !vehicle.reverseGear;
+        vehicle.speed = vehicle.driveInput = vehicle.reverseWait = 0;
+        updateHud(true);
+      }
     } else if (name === 'reload') reload();
     else if (name === 'aim' && !vehicle && player.gear >= 0) player.aiming = !player.aiming;
-    else if (name === 'fire') fire();
-    else if (name === 'pause' || name === 'map') {
+    else if (name === 'fire') {
+      if (coast.game) {
+        if (coast.hit(player)) audio.cue('mark');
+      } else fire();
+    } else if (name === 'pause' || name === 'map') {
       setPause(true);
       callbacks.panel(name);
     }

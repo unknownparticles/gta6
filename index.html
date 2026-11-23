@@ -18,74 +18,118 @@
       <header class="mast">
         <button class="passport" data-open="profile">
           <span class="avatar" aria-hidden="true"><i data-icon="user"></i></span>
-          <span
-            ><b id="player-name">未登记车手</b><small id="profile-label">模拟登录 / 注册</small></span
-          >
+          <span><b id="player-name">S城车手</b><small id="profile-label">登录 / 注册</small></span>
           <em id="vip">VIP 0</em>
         </button>
-        <span class="edition"><i></i> 汕头风格 · 内海湾</span>
-        <div class="top-actions">
+        <div class="resource-bar" aria-label="车手资源">
           <button class="balance" data-open="shop">
-            <i data-icon="coin"></i><b id="coin-count">0</b><span>潮票</span>
+            <i data-icon="coin"></i><span>潮票<b id="coin-count">0</b></span
+            ><strong>＋</strong>
           </button>
-          <button class="square" data-open="notice" aria-label="公告"><i data-icon="bell"></i></button>
+          <button class="balance" data-open="garage">
+            <i data-icon="car"></i><span>涂装<b id="paint-count">1</b></span>
+          </button>
+          <button class="balance" data-open="pass">
+            <i data-icon="ticket"></i><span>里程<b id="mile-count">0</b></span>
+          </button>
+          <button class="balance" data-open="armory">
+            <i data-icon="bolt"></i><span>装备<b id="equip-count">0</b></span>
+          </button>
+        </div>
+        <div class="top-actions">
+          <button class="square" data-open="notice" aria-label="公告">
+            <i data-icon="bell"></i><span>公告</span>
+          </button>
+          <button class="square" data-open="help" aria-label="帮助">
+            <i data-icon="gamepad"></i><span>帮助</span>
+          </button>
           <button class="square" data-open="settings" aria-label="设置">
-            <i data-icon="settings"></i>
+            <i data-icon="settings"></i><span>设置</span>
           </button>
         </div>
       </header>
-      <nav class="rail" aria-label="试玩内容">
+      <nav class="event-bar" aria-label="活动快捷入口">
+        <button data-open="sign"><i data-icon="gift"></i><span>福利中心</span></button>
+        <button data-open="sign"><i data-icon="ticket"></i><span>每日签到</span></button>
+        <button data-open="shop"><i data-icon="crown"></i><span>限时礼包</span></button>
+        <button data-open="districts"><i data-icon="map"></i><span>游览S城</span></button>
+        <button data-start="ferry"><i data-icon="ferry"></i><span>广礐轮渡</span></button>
+        <button data-start="beach"><i data-icon="target"></i><span>沙滩赛事</span></button>
+        <button data-start="race"><i data-icon="finish"></i><span>竞速</span></button>
+        <button data-start="mission"><i data-icon="flag"></i><span>任务</span></button>
+        <button data-open="pass"><i data-icon="ticket"></i><span>通行证</span></button>
+        <button data-open="shop"><i data-icon="bag"></i><span>商城</span></button>
+      </nav>
+      <nav class="rail" aria-label="车手服务">
         <button data-open="garage"><i data-icon="garage"></i><span>车库</span></button>
-        <button data-open="armory"><i data-icon="blaster"></i><span>装备</span></button>
-        <button data-open="districts"><i data-icon="map"></i><span>街区</span></button>
-        <button data-open="help"><i data-icon="gamepad"></i><span>操作</span></button>
+        <button data-start="gang"><i data-icon="police"></i><span>帮派</span></button>
+        <button data-open="armory"><i data-icon="blaster"></i><span>武器</span></button>
+        <button data-open="sign"><i data-icon="gift"></i><span>福利</span></button>
+        <button data-open="pass"><i data-icon="crown"></i><span>特权</span></button>
+        <button data-open="shop"><i data-icon="coin"></i><span>礼包</span></button>
+        <button data-open="profile"><i data-icon="user"></i><span>会员</span></button>
       </nav>
       <div class="hero-title">
         <p><span></span> 汕头 · 一湾两岸</p>
         <h1>GTA<span>6</span></h1>
         <div class="hero-subtitle"><strong>S城风云</strong><small>geitaai</small></div>
-        <div class="hero-stamp">港区开服 <b>试玩季</b></div>
       </div>
-      <aside class="promos" aria-label="模拟运营活动">
+      <aside class="promos" aria-label="福利与礼包">
         <button class="promo recharge" data-open="confirm-pack" data-id="0">
-          <span class="ribbon">港区欢迎礼</span><span class="promo-art"><i data-icon="crown"></i></span>
-          <strong>模拟首充 <em>0 元</em></strong
-          ><small>送镀金涂装 · 实付 0 元</small>
-          <span class="promo-go">去领取 ›</span>
+          <span class="ribbon">首充专享</span><span class="promo-art"><i data-icon="blaster"></i></span>
+          <strong>首充礼包</strong><small>金色涂装 · 潮票 · 车手特权</small>
+          <span class="promo-go">领取好礼</span>
         </button>
         <button class="promo sign" data-open="sign">
-          <span class="ribbon">签到有礼</span><span class="promo-art"><i data-icon="gift"></i></span>
-          <strong>七日签到</strong><small>第七天送限定镀铬涂装</small>
+          <span class="ribbon">登录有礼</span><span class="promo-art"><i data-icon="car"></i></span>
+          <strong>七日登录礼</strong><small>第七天领限定镀铬涂装</small>
           <span id="quick-days" class="quick-days" aria-hidden="true"></span>
         </button>
         <button class="promo pass" data-open="pass">
-          <span class="ribbon">S1</span><strong>夜班通行证</strong><small>开得远，就算有资历</small
+          <span class="ribbon">S1</span><strong>S城通行证</strong><small>累计里程解锁车手头衔</small
           ><i data-icon="ticket"></i>
         </button>
-        <button class="promo shop" data-open="shop">
-          <i data-icon="bag"></i><span><strong>潮票商城</strong><small>模拟礼包与涂装</small></span
-          ><span class="chevron">›</span>
+        <button class="promo member" data-open="membership">
+          <span class="promo-art"><i data-icon="crown"></i></span><strong>豪华月卡</strong
+          ><small>车手补给与会员权益</small><span class="promo-go">查看权益</span>
         </button>
+        <section class="bundle" aria-label="限时礼包">
+          <b>限时礼包 · 超值补给</b>
+          <div>
+            <button data-open="confirm-pack" data-id="0">
+              <i data-icon="gift"></i><span>新手特惠</span><em>领取</em>
+            </button>
+            <button data-open="confirm-pack" data-id="1">
+              <i data-icon="blaster"></i><span>街头补给</span><em>68 潮票</em>
+            </button>
+            <button data-open="confirm-pack" data-id="2">
+              <i data-icon="crown"></i><span>豪华车手</span><em>328 潮票</em>
+            </button>
+          </div>
+        </section>
       </aside>
       <div class="launch">
+        <button class="launch-extra" data-start="ferry">
+          <i data-icon="ferry"></i><span><b>广礐轮渡</b><small>一湾两岸</small></span>
+        </button>
         <button id="free-start" class="launch-main" data-start="free">
           <i data-icon="gamepad"></i><span><b>开始自由模式</b><small>进入S城</small></span
           ><span class="launch-arrow">»</span>
         </button>
         <button class="launch-mission" data-start="mission">
-          <i data-icon="flag"></i><span><b>夜班急件</b><small>剧情任务</small></span>
+          <i data-icon="flag"></i><span><b>剧情模式</b><small>夜班急件</small></span>
         </button>
       </div>
       <footer class="dock">
         <button class="selected" data-open="home"><i data-icon="home"></i> 首页</button>
-        <button data-open="garage"><i data-icon="car"></i> 载具</button>
-        <button class="dock-armory" data-open="armory"><i data-icon="blaster"></i> 武器</button>
+        <button data-start="chase"><i data-icon="key"></i> 街头追逐</button>
+        <button data-start="mission"><i data-icon="flag"></i> 任务</button>
         <button data-open="shop"><i data-icon="bag"></i> 商城</button>
         <button data-open="sign"><i data-icon="gift"></i> 福利</button>
-        <button data-start="race"><i data-icon="finish"></i> 竞速</button>
+        <button data-open="districts"><i data-icon="map"></i> 地图</button>
         <button class="dock-more" data-open="more"><i data-icon="menu"></i> 更多</button>
         <button class="broadcast" data-open="notice">
-          <b>港务广播</b> <span id="ticker">海堤路灯正常。路灯尽头的海，请勿驾车驶入。</span>
+          <b>港务广播</b> <span id="ticker">广礐轮渡往返金平区与濠江区。</span>
         </button>
       </footer>
     </main>
@@ -94,7 +138,7 @@
       <div class="hud">
         <div class="hud-location">
           <span id="district-mark">02</span>
-          <div><strong id="district">维修街</strong><small>SHANTOU BAY</small></div>
+          <div><strong id="district">维修街</strong><small id="district-area">金平区</small></div>
         </div>
         <div id="objective" class="objective">
           <small id="objective-label">自由模式</small><strong id="objective-title"></strong
@@ -152,6 +196,9 @@
           <button data-hold="sprint" aria-label="冲刺">
             <i data-icon="sprint"></i><span>冲刺</span>
           </button>
+          <button class="jump-button" data-game="jump" aria-label="跳跃">
+            <i data-icon="jump"></i><span>跳跃</span>
+          </button>
           <button data-game="switch" aria-label="切换武器">
             <i data-icon="repeat"></i><span>切换</span>
           </button>
@@ -164,6 +211,9 @@
           </button>
         </div>
         <div class="touch-buttons car-controls">
+          <button id="gear-switch" data-game="gear" aria-label="切换倒挡" aria-pressed="false">
+            <i data-icon="reverse"></i><span>D / R</span>
+          </button>
           <button data-hold="hand" aria-label="手刹">
             <i data-icon="handbrake"></i><span>手刹</span>
           </button>

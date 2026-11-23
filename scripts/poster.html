@@ -16,7 +16,7 @@
   <canvas></canvas>
   <script type="module">
     import * as T from 'three';
-    import { loadModels, makeCity, vehicleModel } from '../src/world.js';
+    import { loadModels, makeCity, personModel, vehicleModel } from '../src/world.js';
 
     await loadModels();
     const canvas = document.querySelector('canvas');
@@ -56,6 +56,23 @@
       const camera = new T.PerspectiveCamera(69, 1440 / 840, 0.1, 1600);
       camera.position.set(26, 55, 323);
       camera.lookAt(24, 17, 144);
+      if (new URLSearchParams(location.search).has('lobby')) {
+        const car = vehicleModel('coupe', '#aa7abe').group;
+        car.position.set(25.5, 0.13, 151.6);
+        car.rotation.y = Math.PI * 0.74;
+        scene.add(car);
+        for (const [x, z, color, yaw] of [
+          [22.9, 151.4, 0xe9a164, 0.22],
+          [27.1, 152.9, 0xce6b98, -0.23],
+        ]) {
+          const resident = personModel(color, 1).group;
+          resident.position.set(x, 0.13, z);
+          resident.rotation.y = yaw;
+          scene.add(resident);
+        }
+        camera.position.set(24.7, 2.8, 143.5);
+        camera.lookAt(26, 1.9, 155);
+      }
       renderer.render(scene, camera);
       document.body.dataset.ready = 'true';
     }

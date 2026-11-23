@@ -1,5 +1,12 @@
 import { addShantouScenery } from './city-scenery.js';
-import { bridgeAt, groundHeight, interiorAt, landAt, wetlandWaterAt } from './city-layout.js';
+import {
+  bridgeAt,
+  canSwimAt,
+  groundHeight,
+  interiorAt,
+  landAt,
+  wetlandWaterAt,
+} from './city-layout.js';
 import * as T from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { roads, harbor } from './data.js';
@@ -514,7 +521,7 @@ export function makeCity(scene) {
   return {
     height: groundHeight,
     interior: interiorAt,
-    clear(x, z, radius = 0.55, vehicle = false) {
+    clear(x, z, radius = 0.55, vehicle = false, swim = false) {
       const bridge = bridgeAt(x, z);
       if (bridge) {
         if (!bridgeAt(x, z, radius)) return false;
@@ -526,6 +533,7 @@ export function makeCity(scene) {
           [0, radius],
           [0, -radius],
         ]) {
+          if (swim && canSwimAt(x + dx, z + dz)) continue;
           if (!landAt(x + dx, z + dz) || wetlandWaterAt(x + dx, z + dz)) return false;
         }
       }

@@ -62,9 +62,9 @@ export const weapons = [
   },
 ];
 export const packs = [
-  { name: '首次假充', parody: '6', coins: 180, paint: 'gold', slogan: '镀金很亮，身份很贵' },
-  { name: '街头补给', parody: '68', coins: 350, paint: 'candy', slogan: '连你的影子都有涂装' },
-  { name: '尊贵上岸', parody: '648', coins: 770, paint: 'jade', slogan: '连海浪都给你让路' },
+  { name: '首充礼包', cost: 0, coins: 180, paint: 'gold', slogan: '镀金很亮，身份很贵' },
+  { name: '街头补给', cost: 68, coins: 350, paint: 'candy', slogan: '连你的影子都有涂装' },
+  { name: '豪华车手礼包', cost: 328, coins: 770, paint: 'jade', slogan: '连海浪都给你让路' },
 ];
 export const days = [
   ['60 潮票', 60],
@@ -99,11 +99,11 @@ export const raceRoute = [
   [-78, -152],
   [-8, -152],
 ];
-import { bridgeAt, landmarks, interiorAt } from './city-layout.js';
+import { administrativeDistrict, bridgeAt, canSwimAt, interiorAt } from './city-layout.js';
 
 const districtNames = {
   wetland: { name: '牛田洋', mark: '01', color: '#a9e69e' },
-  oldTown: { name: '北岸老城', mark: '02', color: '#f7ce7c' },
+  oldTown: { name: '金平老城', mark: '02', color: '#f7ce7c' },
   docks: { name: '北岸货场', mark: '03', color: '#fe7ac4' },
   east: { name: '东海岸', mark: '04', color: '#6affde' },
   south: { name: '礐石南岸', mark: '05', color: '#a9e69e' },
@@ -113,10 +113,11 @@ export function districtAt(x, z) {
   if (room) return { name: room.name, mark: '内', color: '#ffe4af' };
   const bridge = bridgeAt(x, z);
   if (bridge) return { name: bridge.name, mark: '桥', color: '#c4baff' };
-  if (z > 233) return districtNames.south;
+  if (canSwimAt(x, z)) return { name: '内海湾水域', mark: '水', color: '#acd4ff' };
+  if (administrativeDistrict(x, z) === '濠江区') return districtNames.south;
   if (x < -184) return districtNames.wetland;
   if (x > 208) return districtNames.east;
   if (x > 80 && z < -16) return districtNames.docks;
-  if (z > 143 && x > 14 && x < 70) return { ...districtNames.oldTown, name: landmarks[1].name };
+  if (z > 143 && x > 14 && x < 70) return { ...districtNames.oldTown, name: '人民广场' };
   return districtNames.oldTown;
 }
