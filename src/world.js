@@ -1,4 +1,5 @@
 import { addShantouScenery } from './city-scenery.js';
+import { addNeighborhood } from './neighborhood-scenery.js';
 import {
   bridgeAt,
   canSwimAt,
@@ -15,6 +16,7 @@ const media = import.meta.env.BASE_URL + 'media/models/';
 const geometry = {
   box: new T.BoxGeometry(1, 1, 1),
   cylinder: new T.CylinderGeometry(0.5, 0.5, 1, 8),
+  pavilionRoof: new T.CylinderGeometry(0.22, 0.5, 1, 8),
   sphere: new T.IcosahedronGeometry(0.5, 1),
 };
 const glbs = {};
@@ -105,7 +107,41 @@ function shape(name, color, x, y, z, w, h, d, rot = 0) {
   mesh.rotation.y = rot;
   return mesh;
 }
+function electricBike(tint) {
+  const group = new T.Group();
+  const body = shape('box', tint || 0x71a992, 0, 0.52, 0.24, 0.53, 0.45, 0.91);
+  group.add(
+    body,
+    shape('box', 0x342938, 0, 0.37, -0.31, 0.47, 0.15, 0.76),
+    shape('box', 0x312b3b, 0, 0.78, 0.28, 0.44, 0.12, 0.58),
+    shape('box', tint || 0x71a992, 0, 0.72, -0.63, 0.4, 0.6, 0.28),
+    shape('box', 0x30293b, 0, 1.05, -0.64, 0.72, 0.085, 0.1),
+  );
+  const wheels = [];
+  for (const z of [-0.68, 0.68]) {
+    const wheel = shape('cylinder', 0x24222e, 0, 0.26, z, 0.52, 0.158, 0.52);
+    wheel.rotation.z = Math.PI / 2;
+    wheels.push(wheel);
+    const hub = shape('cylinder', 0xa2a3a4, 0, 0.26, z, 0.27, 0.17, 0.27);
+    hub.rotation.z = Math.PI / 2;
+    group.add(wheel, hub);
+  }
+  for (const [z, y, color] of [
+    [-0.79, 0.89, 0xffebbb],
+    [0.7, 0.62, 0xed6462],
+  ]) {
+    const light = new T.Mesh(geometry.box, new T.MeshBasicMaterial({ color }));
+    light.position.set(0, y, z);
+    light.scale.set(0.24, 0.11, 0.055);
+    group.add(light);
+  }
+  group.traverse((node) => {
+    if (node.isMesh) node.name = 'body';
+  });
+  return { group, wheels, lights: [] };
+}
 export function vehicleModel(type, tint) {
+  if (type === 'ebike') return electricBike(tint);
   const group = new T.Group();
   const source = glbs[type];
   const wheels = [];
@@ -213,7 +249,16 @@ export function personModel(color = 0xbf6399, variant = 0) {
     blaster.visible = aim;
     if (aim) blaster.position.set(0.35, 1.24, -0.46);
   };
-  return { group, walk };
+  function ride() {
+    walk(0, 0);
+    group.position.y = -0.03;
+    group.rotation.x = -0.1;
+    for (const { leg, arm } of limbs) {
+      leg.rotation.x = -0.45;
+      arm.rotation.x = -1.24;
+    }
+  }
+  return { group, walk, ride };
 }
 
 function rand(seed) {
@@ -288,6 +333,7 @@ export function makeCity(scene) {
   scene.add(ambient, sun, rim);
 
   const landmarkSigns = addShantouScenery(scene, { box, batch, block, random: rand(6801) });
+  landmarkSigns.push(...addNeighborhood({ box, batch, block }));
   box(-183.2, 0.45, -85, 1.2, 1.1, 238, 0x897275);
   const roadWidth = 13;
   for (const x of roads.x) {
@@ -488,32 +534,69 @@ export function makeCity(scene) {
   }
   for (const mesh of meshGroups) scene.add(mesh);
 
-  const signMaterial = (label, color) => {
+  const signMaterial = (label, color, { cat, width, height, background = '#231d35' } = {}) => {
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 128;
+    canvas.height = width ? 64 : 128;
+    canvas.width = width ? Math.round(canvas.height * (width / height)) : 512;
     const ctx = canvas.getContext('2d');
-    ctx.fillStyle = '#231d35';
-    ctx.fillRect(0, 0, 512, 128);
+    const scale = canvas.height / 128;
+    ctx.scale(scale, scale);
+    const span = canvas.width / scale;
+    ctx.fillStyle = background;
+    ctx.fillRect(0, 0, span, 128);
     ctx.strokeStyle = color;
     ctx.lineWidth = 5;
-    ctx.strokeRect(3, 3, 506, 122);
+    ctx.strokeRect(3, 3, span - 6, 122);
     ctx.fillStyle = color;
-    ctx.font = 'bold 56px sans-serif';
+    ctx.font = width ? 'bold 85px sans-serif' : 'bold 56px sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(label, 256, 69);
+    ctx.fillText(label, span / 2 + (cat ? 40 : 0), 69, span - (cat ? 170 : 42));
+    if (cat) {
+      ctx.save();
+      ctx.translate(82, 65);
+      ctx.fillStyle = '#e1a265';
+      ctx.beginPath();
+      ctx.moveTo(-37, -9);
+      ctx.lineTo(-34, -43);
+      ctx.lineTo(-8, -27);
+      ctx.lineTo(9, -27);
+      ctx.lineTo(35, -43);
+      ctx.lineTo(38, -8);
+      ctx.quadraticCurveTo(63, 34, 0, 39);
+      ctx.quadraticCurveTo(-56, 35, -37, -9);
+      ctx.fill();
+      ctx.fillStyle = '#fff1d6';
+      ctx.beginPath();
+      ctx.ellipse(0, 16, 30, 17, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#633e3a';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-22, 4);
+      ctx.lineTo(-13, 6);
+      ctx.moveTo(22, 4);
+      ctx.lineTo(13, 6);
+      ctx.moveTo(-3, 16);
+      ctx.lineTo(3, 16);
+      ctx.stroke();
+      ctx.restore();
+    }
     const texture = new T.CanvasTexture(canvas);
     texture.colorSpace = T.SRGBColorSpace;
     return new T.MeshBasicMaterial({ map: texture, side: T.DoubleSide });
   };
-  for (const [label, x, y, z, yaw, color] of [
+  for (const [label, x, y, z, yaw, color, style] of [
     ...landmarkSigns,
     ['潮汐货场', 106, 7, -33, 0, '#ffd09b'],
     ['滨海大道', -170, 5, 125, PI / 2, '#8affe2'],
     ['夜班维修街', 39, 4.3, 31, 0, '#ffa4d5'],
   ]) {
-    const sign = new T.Mesh(new T.PlaneGeometry(8.5, 2.12), signMaterial(label, color));
+    const sign = new T.Mesh(
+      new T.PlaneGeometry(style?.width || 8.5, style?.height || 2.12),
+      signMaterial(label, color, style),
+    );
     sign.position.set(x, y, z);
     sign.rotation.y = yaw;
     scene.add(sign);

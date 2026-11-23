@@ -5,6 +5,7 @@ import { audioSystem } from './audio.js';
 import { cars, days, packs, paints, weapons } from './data.js';
 import { icons } from './icons.js';
 import { drawMap } from './map.js';
+import { eateries } from './neighborhood.js';
 import {
   buyAmmo,
   buyPaint,
@@ -157,7 +158,16 @@ function rotationState() {
       if (!next && !loading && game) {
         if (game.inCinematic) game.focusCinematic();
         else if (
-          ['fail', 'hospital', 'mission', 'chapterDone', 'dialogue', 'race', 'context'].includes(view)
+          [
+            'fail',
+            'hospital',
+            'mission',
+            'chapterDone',
+            'dialogue',
+            'food',
+            'race',
+            'context',
+          ].includes(view)
         )
           open(view, details, true);
         else open('pause', {}, true);
@@ -195,6 +205,7 @@ const panelTitles = {
   pass: '夜班通行证',
   garage: '晚钟车库',
   armory: '武器商店',
+  food: '点单',
   districts: 'S城街区',
   help: '操作说明',
   notice: '港务广播',
@@ -229,8 +240,16 @@ function open(name, data = {}, keepFocus = false) {
   if (!panel.open && !keepFocus) lastFocus = document.activeElement;
   if (!play.hidden && game) game.pause(true);
   $('#panel-kicker').textContent =
-    name === 'profile' || name === 'register' || name === 'confirm-pack' ? '本机演示' : 'GTA6-S城风云';
-  $('#panel-title').textContent = name === 'dialogue' ? data.chapter : panelTitles[name] || 'S城';
+    name === 'profile' || name === 'register' || name === 'confirm-pack'
+      ? '本机演示'
+      : 'GTA6-S城风云';
+  const heading =
+    name === 'dialogue'
+      ? data.chapter
+      : name === 'food'
+        ? eateries.find((shop) => shop.id === data.id)?.name
+        : panelTitles[name];
+  $('#panel-title').textContent = heading || 'S城';
   panel.classList.toggle('story-dialog', name === 'dialogue');
   play.toggleAttribute('data-dialogue', name === 'dialogue');
   panel.querySelector('[data-panel-close]').hidden = name === 'dialogue';
@@ -583,7 +602,7 @@ function renderPanel(name, data) {
       );
     },
     garage() {
-      const values = Object.entries(cars);
+      const values = Object.entries(cars).filter(([, car]) => !car.noReverse);
       return (
         '<div class="row-grid">' +
         values
@@ -632,6 +651,57 @@ function renderPanel(name, data) {
           .join('') +
         '</div><p>停车场可以试驾厢式车，车库旁可以修复车辆。</p><div class="actions">' +
         button('用当前车辆出发', 'data-start="free"', primary) +
+        '</div>'
+      );
+    },
+    food() {
+      const shop = eateries.find((entry) => entry.id === data.id);
+      if (!shop) return '';
+      const health = Math.ceil(game?.health ?? 100);
+      return (
+        '<div class="food-status"><p>' +
+        text(shop.kind) +
+        '</p><span>' +
+        icon('heart') +
+        ' ' +
+        health +
+        ' / 100</span><span>' +
+        icon('coin') +
+        ' ' +
+        save.coins +
+        ' 潮票</span></div>' +
+        '<div class="food-menu">' +
+        shop.menu
+          .map(([name, price, heal], index) => {
+            const full = game?.health >= 100;
+            const ready = !full && save.coins >= price;
+            const label = full ? '生命已满' : save.coins < price ? '潮票不足' : '点一份';
+            return (
+              '<article class="tile food-item"><div><b>' +
+              text(name) +
+              '</b><small>' +
+              icon('heart') +
+              ' 最多恢复 ' +
+              heal +
+              ' 生命</small></div><div>' +
+              '<span>' +
+              price +
+              ' 潮票</span>' +
+              button(
+                label,
+                command('buy-food') +
+                  ' data-id="' +
+                  index +
+                  '" aria-label="' +
+                  text(label + ' · ' + name + ' · ' + price + ' 潮票') +
+                  '"',
+                ready ? primary : '',
+                !ready,
+              ) +
+              '</div></article>'
+            );
+          })
+          .join('') +
         '</div>'
       );
     },
@@ -784,7 +854,7 @@ function renderPanel(name, data) {
     },
     map() {
       return (
-        '<p>青色箭头是当前位置，金色虚线是导航路线。</p>' +
+        '<p>青色箭头是当前位置，金色虚线是导航路线。碗标记是食店，绿色两轮标记是可骑的电动车。</p>' +
         button('继续游戏', command('resume'), primary) +
         landmarkMap()
       );
@@ -954,6 +1024,18 @@ function applyAction(action, id) {
   switch (action) {
     case 'story':
       if (chapterUnlocked(save, id)) void launch('story', id);
+      break;
+    case 'buy-food':
+      if (view === 'food' && game) {
+        const message = game.buyMeal(details.id, Number(id));
+        refreshLobby();
+        renderPanel('food', details);
+        const next =
+          content.querySelector('[data-action="buy-food"]:not(:disabled)') ||
+          panel.querySelector('[data-panel-close]');
+        next.focus({ preventScroll: true });
+        toast(message);
+      }
       break;
     case 'dialogue-next':
     case 'dialogue-skip': {

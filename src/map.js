@@ -180,12 +180,9 @@ export function drawMap(canvas, state = {}, detailed = false) {
       ctx.fillText(districtAt(x, z).name, left(x), top(z));
     }
     for (const [point, label, color, name] of [
-      ...landmarks.map(({ point, labelAt, name, color, icon }) => [
-        labelAt || point,
-        name,
-        color,
-        icon,
-      ]),
+      ...landmarks
+        .filter(({ icon }) => icon !== 'bowl')
+        .map(({ point, labelAt, name, color, icon }) => [labelAt || point, name, color, icon]),
       [zones.garage, '车库', '#f7ce7c', 'garage'],
       [zones.training, '训练场', '#83f9df', 'target'],
       [zones.hospital, '潮汐市医院', '#a0ffde', 'hospital'],
@@ -198,9 +195,17 @@ export function drawMap(canvas, state = {}, detailed = false) {
       ctx.fillStyle = color;
       ctx.fillText(label, left(point[0]) + 11, top(point[1]) + 5);
     }
+    for (const { point, color, icon } of landmarks.filter(({ icon }) => icon === 'bowl')) {
+      pin(point, icon, color, 4);
+    }
   } else {
     pin(zones.garage, 'garage', '#f7ce7c', 7);
     pin(zones.hospital, 'hospital', '#a0ffde', 7);
+  }
+  for (const bike of state.bikes || []) {
+    if (detailed || Math.hypot(state.x - bike.x, state.z - bike.z) < 38) {
+      pin([bike.x, bike.z], 'bike', '#b5e4ba', detailed ? 6 : 5);
+    }
   }
   if (state.target) {
     const path = routeTo(state.x ?? zones.spawn[0], state.z ?? zones.spawn[1], state.target);

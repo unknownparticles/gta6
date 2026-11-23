@@ -2021,6 +2021,52 @@ a {
 .story-actions small {
   margin-right: auto;
 }
+.food-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  color: var(--cream);
+}
+.food-status p {
+  margin-right: auto;
+  color: var(--gold);
+  font-weight: 800;
+}
+.food-status span,
+.food-item small {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.food-status i,
+.food-item i {
+  color: var(--mint);
+}
+.food-menu {
+  display: grid;
+  gap: 8px;
+}
+.food-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.food-item > div {
+  display: grid;
+  gap: 4px;
+}
+.food-item > div:last-child {
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 9px;
+  white-space: nowrap;
+  color: var(--gold);
+}
+.food-item .action {
+  min-height: 44px;
+}
 @media (max-height: 400px) {
   .story-dialog {
     max-height: calc(100dvh - max(48px, env(safe-area-inset-top) + env(safe-area-inset-bottom) + 24px));

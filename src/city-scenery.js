@@ -279,7 +279,7 @@ export function addShantouScenery(scene, { box, batch, block, random }) {
 
   for (const room of interiors) {
     const { x, z, w, d, accent, door, front } = room;
-    const height = room.id === 'towerHall' ? 5.8 : 4.6;
+    const height = room.id === 'diveHall' ? 6.8 : room.id === 'towerHall' ? 5.8 : 4.6;
     const wall = 0x696278;
     const entry = z + (front * d) / 2;
     const back = z - (front * d) / 2;
@@ -331,9 +331,10 @@ export function addShantouScenery(scene, { box, batch, block, random }) {
     ['wetlandHall', '牛田洋 · 红树林与候鸟'],
     ['garageHall', '晚钟车库 · 维修接待'],
     ['hospitalHall', '急诊与出院登记'],
+    ['diveHall', '濠江 · 游泳与跳水'],
   ]) {
     const room = interiors.find((place) => place.id === id);
-    const back = room.z - room.front * (room.d / 2 - 0.31);
+    const back = room.z - room.front * (room.d / 2 - 0.38);
     signs.push([caption, room.x, 2.28, back, room.front === 1 ? 0 : Math.PI, '#fff0de']);
   }
 

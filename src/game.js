@@ -8,6 +8,7 @@ import { drive, pedestrianContact, vehicleContact } from './driving.js';
 import { setIcon } from './icons.js';
 import { createInput } from './input.js';
 import { distance, direction, drawMap, inHarbor, routeTo } from './map.js';
+import { bikeParking, bikeRoutes, eateries, inDivePool } from './neighborhood.js';
 import { addHeat, advanceSearch, freshAlert } from './wanted.js';
 import { grantWeapon, hasWeapon } from './save.js';
 import { loadModels, makeCity, personModel, vehicleModel } from './world.js';
@@ -158,9 +159,15 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       [-155, -12],
     ],
   ];
-  const traffic = trafficRoutes.map((route, index) => {
-    const type = index % 2 ? 'van' : 'sedan';
-    const model = vehicleModel(type, [0x9e8bc9, 0xa78166, 0x7499ad, 0x946582, 0x7b8f87][index]);
+  const trafficColors = [0x9e8bc9, 0xa78166, 0x7499ad, 0x946582, 0x7b8f87];
+  const bikeColors = [0x8ec4a4, 0xcf8971, 0x7499ad, 0xeab872, 0x946582];
+  const traffic = [...trafficRoutes, ...bikeRoutes].map((route, index) => {
+    const bike = index >= trafficRoutes.length;
+    const type = bike ? 'ebike' : index % 2 ? 'van' : 'sedan';
+    const model = vehicleModel(
+      type,
+      bike ? bikeColors[index % bikeColors.length] : trafficColors[index],
+    );
     scene.add(model.group);
     return {
       ...model,
@@ -396,8 +403,11 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       });
   }
 
-  function newVehicle(type, point, yaw = 0) {
-    const tint = paints[save.paint[type]]?.color || (type === 'sedan' ? '#d6c5dd' : cars[type].color);
+  function newVehicle(type, point, yaw = 0, defaultTint) {
+    const tint =
+      paints[save.paint[type]]?.color ||
+      defaultTint ||
+      (type === 'sedan' ? '#d6c5dd' : cars[type].color);
     const object = {
       ...vehicleModel(type, tint),
       type,
@@ -628,6 +638,9 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       [player.x, player.z] =
         mode === 'beach' ? beach.spawn : mode === 'ferry' ? ferryStops[0].pier : spawn;
     }
+    bikeParking.forEach(([point, yaw], index) =>
+      newVehicle('ebike', point, yaw, bikeColors[index % bikeColors.length]),
+    );
     player.yaw = cameraYaw = mode === 'ferry' ? Math.PI : 0;
     cameraPitch = 0.1;
     lastCameraInput = 0;
@@ -812,6 +825,27 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     nearAction.run();
   }
 
+  function nearbyEatery() {
+    if (vehicle || player.swimming || coast.riding) return;
+    return eateries.find((shop) => distance(player.x, player.z, shop.point) <= 3.6);
+  }
+
+  function buyMeal(id, index) {
+    const shop = nearbyEatery();
+    const meal = shop?.id === id && Number.isInteger(index) ? shop.menu[index] : null;
+    if (!alive || !viewActive || !paused || !meal) return '请到店门口点单。';
+    const [name, price, heal] = meal;
+    if (player.hp >= 100) return '生命已满。';
+    if (save.coins < price) return '潮票不足。';
+    const restored = Math.min(100 - player.hp, heal);
+    player.hp += restored;
+    save.coins -= price;
+    store.write();
+    audio.cue('mark');
+    updateHud(true);
+    return name + '已上桌 · 恢复 ' + Math.ceil(restored) + ' 生命';
+  }
+
   function interaction() {
     const x = player.x;
     const z = player.z;
@@ -864,7 +898,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     }
     if (vehicle)
       return Math.abs(vehicle.speed) <= 3.5 && !race
-        ? { text: '下车', icon: 'exit', run: exitCar }
+        ? { text: vehicle.type === 'ebike' ? '下电动车' : '下车', icon: 'exit', run: exitCar }
         : null;
     if (coast.riding) {
       if (!coast.canLeave) return null;
@@ -887,6 +921,13 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     ) {
       return { text: '与' + step.who + '对话', icon: 'flag', run: completeStoryStep };
     }
+    const eatery = nearbyEatery();
+    if (eatery)
+      return {
+        text: '点单 · ' + eatery.name,
+        icon: 'bowl',
+        run: () => callbacks.panel('food', { id: eatery.id }),
+      };
     const stopIndex = ferryStops.findIndex((stop) => within(stop.pier, 4.5));
     if (stopIndex >= 0 && coast.dock === stopIndex) {
       return {
@@ -921,7 +962,9 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     }
     const nearby = owned.find((car) => distance(x, z, [car.x, car.z]) < 5.3);
     if (nearby)
-      return { text: '上车 · ' + cars[nearby.type].name, icon: 'car', run: () => enterCar(nearby) };
+      return nearby.type === 'ebike'
+        ? { text: '骑上电动车', icon: 'bike', run: () => enterCar(nearby) }
+        : { text: '上车 · ' + cars[nearby.type].name, icon: 'car', run: () => enterCar(nearby) };
     const street = traffic.find(
       (car) =>
         car.group.visible &&
@@ -1659,7 +1702,25 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       const offset = Math.abs(dx * fz - dz * fx);
       const obstruction =
         ahead > 0 && ahead < (vehicle ? 5.2 : 4.6) && offset < (vehicle ? 1.75 : 0.85);
-      npcDrive(car, car.route[car.index], obstruction ? 0 : 10, range > 200 ? dt * 4 : dt);
+      npcDrive(
+        car,
+        car.route[car.index],
+        obstruction ? 0 : car.type === 'ebike' ? 7.4 : 10,
+        range > 200 ? dt * 4 : dt,
+      );
+      if (car.type === 'ebike') {
+        car.driver.group.visible = range < (low() ? 84 : 128);
+        if (car.driver.group.visible) {
+          const [dx, dz] = forward(car.yaw);
+          car.driver.ride();
+          car.driver.group.position.set(
+            car.x - dx * 0.28,
+            city.height(car.x, car.z) - 0.03,
+            car.z - dz * 0.28,
+          );
+          car.driver.group.rotation.y = car.yaw;
+        }
+      }
     }
   }
 
@@ -1822,7 +1883,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
 
   function playerGround() {
     if (coast.riding) return coast.elevation;
-    if (player.swimming) return -1.72;
+    if (player.swimming) return inDivePool(player.x, player.z) ? -0.5 : -1.72;
     return city.height(player.x, player.z) + player.jump;
   }
 
@@ -1980,7 +2041,9 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     setIcon(ui['touch-attack-icon'], weaponIcon);
     setIcon(ui['weapon-icon'], weaponIcon);
     if (vehicle) {
+      const bike = vehicle.type === 'ebike';
       const reversing = vehicle.reverseGear || vehicle.speed < -0.3;
+      ui['gear-switch'].hidden = bike;
       ui['gear-switch'].setAttribute('aria-pressed', String(vehicle.reverseGear));
       ui['touch-brake-label'].textContent = reversing && !vehicle.reverseGear ? '倒车' : '刹车';
       setIcon(ui['touch-brake-icon'], reversing && !vehicle.reverseGear ? 'reverse' : 'brake');
@@ -1988,13 +2051,17 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       ui.gear.textContent =
         vehicle.hp <= 0
           ? '停驶'
-          : vehicle.reverseGear
-            ? 'R'
-            : Math.abs(vehicle.speed) < 0.3
-              ? 'N'
-              : vehicle.speed < 0
-                ? 'R'
-                : 'D';
+          : bike
+            ? Math.abs(vehicle.speed) < 0.3
+              ? '停'
+              : '骑'
+            : vehicle.reverseGear
+              ? 'R'
+              : Math.abs(vehicle.speed) < 0.3
+                ? 'N'
+                : vehicle.speed < 0
+                  ? 'R'
+                  : 'D';
       ui.condition.style.width = vehicle.hp + '%';
       ui['car-label'].textContent = cars[vehicle.type].name + (vehicle.stolen ? ' · 街车' : '');
       ui['drive-status'].textContent =
@@ -2005,13 +2072,21 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       const ammo = player.inventory[player.gear];
       ui.ammo.textContent = ammo ? (player.reload ? '装填中' : ammo.ammo + ' / ' + ammo.stock) : '';
     }
-    mapState = { x: player.x, z: player.z, yaw: -player.yaw, target, alert };
+    mapState = {
+      x: player.x,
+      z: player.z,
+      yaw: -player.yaw,
+      target,
+      alert,
+      bikes: owned.filter((item) => item.type === 'ebike' && item !== vehicle),
+    };
     if (inspect) {
       const snapshot = {
         x: player.x,
         z: player.z,
         yaw: player.yaw,
         speed: vehicle?.speed ?? null,
+        vehicle: vehicle?.type ?? null,
         stage: mission?.stage,
         level: alert.level,
         countdown: alert.left,
@@ -2100,7 +2175,18 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   }
 
   function syncPlayerModel() {
-    playerModel.group.visible = !vehicle;
+    playerModel.group.visible = !vehicle || vehicle.type === 'ebike';
+    if (vehicle?.type === 'ebike') {
+      const [dx, dz] = forward(vehicle.yaw);
+      playerModel.ride();
+      playerModel.group.position.set(
+        player.x - dx * 0.28,
+        city.height(player.x, player.z) - 0.03,
+        player.z - dz * 0.28,
+      );
+      playerModel.group.rotation.y = vehicle.yaw;
+      return;
+    }
     playerModel.group.position.set(player.x, 0.035, player.z);
     playerModel.group.rotation.y = player.yaw;
     playerModel.walk(
@@ -2257,6 +2343,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     ) {
       player.lift = 6.1;
     } else if (name === 'gear' && vehicle) {
+      if (vehicle.type === 'ebike') return;
       if (Math.abs(vehicle.speed) > 1.1) callbacks.toast('请先停车再切换挡位');
       else {
         vehicle.reverseGear = !vehicle.reverseGear;
@@ -2341,6 +2428,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       recover();
     },
     action: act,
+    buyMeal,
+    get health() {
+      return player.hp;
+    },
     view(value) {
       viewActive = value;
       if (!value) setPause(true);

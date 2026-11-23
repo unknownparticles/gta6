@@ -29,6 +29,17 @@ export const cars = {
     size: 1.1,
     mass: 1.15,
   },
+  ebike: {
+    name: '街坊电动车',
+    subtitle: '灵活 · 两轮',
+    color: '#83ceac',
+    speed: 12,
+    power: 6.5,
+    turn: 2.6,
+    size: 0.55,
+    mass: 0.48,
+    noReverse: true,
+  },
 };
 export const paints = {
   factory: { name: '原厂涂装', color: '', price: 0 },

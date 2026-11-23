@@ -1,3 +1,5 @@
+import { divingHall, eateries, inDivePool, pavilion } from './neighborhood.js';
+
 export const mapBounds = { west: -300, east: 350, north: -215, south: 425 };
 export const districtBorderX = 106;
 
@@ -143,6 +145,7 @@ export const interiors = [
     front: 1,
     accent: 0x8dfbe4,
   },
+  divingHall,
 ];
 
 export const landmarks = [
@@ -243,6 +246,30 @@ export const landmarks = [
     color: '#a9e69e',
     icon: 'map',
     description: '鱼塘、湿地、堤路和观鸟站。',
+  },
+  ...eateries.map(({ id, name, point, color, kind }) => ({
+    id,
+    name,
+    point,
+    color,
+    icon: 'bowl',
+    description: kind + ' · 吃东西可恢复生命。',
+  })),
+  {
+    id: 'park-pavilion',
+    name: pavilion.name,
+    point: pavilion.point,
+    color: '#a9e69e',
+    icon: 'tea',
+    description: '老城海堤边的凉亭，街坊在这里围桌喝工夫茶。',
+  },
+  {
+    id: divingHall.id,
+    name: divingHall.name,
+    point: divingHall.point,
+    color: '#83f9df',
+    icon: 'swim',
+    description: '南岸室内跳水馆，进场可参观跳台或下池游泳。',
   },
 ];
 
@@ -352,6 +379,7 @@ export const ferryStops = [
 export const beach = { court: [286, 124], spawn: [286, 133], water: [304, 170] };
 
 export function canSwimAt(x, z) {
+  if (inDivePool(x, z)) return true;
   if (bridgeAt(x, z) || landAt(x, z)) return false;
   return x >= -254 && x <= 343 && z >= 139 && z <= 308;
 }
