@@ -1,4 +1,5 @@
 import { districtAt, harbor, roads, zones } from './data.js';
+import { iconPath } from './icons.js';
 
 export const distance = (x, z, point) => Math.hypot(x - point[0], z - point[1]);
 export const inHarbor = (x, z) => x >= harbor.x1 && x <= harbor.x2 && z >= harbor.z1 && z <= harbor.z2;
@@ -40,6 +41,18 @@ export function drawMap(canvas, state = {}, detailed = false) {
     ctx.arc(left(x), top(z), radius, 0, Math.PI * 2);
     ctx.fill();
   };
+  const pin = ([x, z], name, color, radius) => {
+    dot(x, z, radius, color);
+    ctx.save();
+    ctx.translate(left(x) - radius * 0.7, top(z) - radius * 0.7);
+    ctx.scale((radius * 1.4) / 24, (radius * 1.4) / 24);
+    ctx.strokeStyle = '#19142b';
+    ctx.lineWidth = 2.7;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke(iconPath(name));
+    ctx.restore();
+  };
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = '#19142b';
   ctx.fillRect(0, 0, w, h);
@@ -58,7 +71,7 @@ export function drawMap(canvas, state = {}, detailed = false) {
     ctx.stroke();
     ctx.setLineDash([]);
     for (const patrol of patrols) {
-      if (!patrol.disabled) dot(patrol.x, patrol.z, detailed ? 4 : 3, '#ff79a7');
+      if (!patrol.disabled) pin([patrol.x, patrol.z], 'police', '#ff79a7', detailed ? 7 : 6);
     }
   }
   {
@@ -80,19 +93,22 @@ export function drawMap(canvas, state = {}, detailed = false) {
     ]) {
       ctx.fillText(districtAt(x, z).name, left(x), top(z));
     }
-    for (const [point, label, color] of [
-      [zones.garage, '车库', '#f7ce7c'],
-      [zones.training, '训练场', '#83f9df'],
-      [zones.hospital, '潮汐市医院', '#a0ffde'],
-      [zones.race, '计时赛', '#83f9df'],
-      [zones.gang, '街区事件', '#fe7ac4'],
-      [[75, -82], '西出口', '#ffda9c'],
-      [[150, -17], '南出口', '#ffda9c'],
+    for (const [point, label, color, name] of [
+      [zones.garage, '车库', '#f7ce7c', 'garage'],
+      [zones.training, '训练场', '#83f9df', 'target'],
+      [zones.hospital, '潮汐市医院', '#a0ffde', 'hospital'],
+      [zones.race, '计时赛', '#83f9df', 'finish'],
+      [zones.gang, '街区事件', '#fe7ac4', 'flag'],
+      [[75, -82], '西出口', '#ffda9c', 'exit'],
+      [[150, -17], '南出口', '#ffda9c', 'exit'],
     ]) {
-      dot(...point, 4.5, color);
+      pin(point, name, color, 8);
       ctx.fillStyle = color;
-      ctx.fillText(label, left(point[0]) + 8, top(point[1]) + 5);
+      ctx.fillText(label, left(point[0]) + 11, top(point[1]) + 5);
     }
+  } else {
+    pin(zones.garage, 'garage', '#f7ce7c', 7);
+    pin(zones.hospital, 'hospital', '#a0ffde', 7);
   }
   if (state.target) {
     const path = routeTo(state.x ?? zones.spawn[0], state.z ?? zones.spawn[1], state.target);

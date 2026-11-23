@@ -30,8 +30,8 @@
         </div>
       </header>
       <nav class="rail" aria-label="试玩内容">
-        <button data-open="garage"><i data-icon="car"></i><span>车库</span></button>
-        <button data-open="armory"><i data-icon="target"></i><span>装备</span></button>
+        <button data-open="garage"><i data-icon="garage"></i><span>车库</span></button>
+        <button data-open="armory"><i data-icon="blaster"></i><span>装备</span></button>
         <button data-open="districts"><i data-icon="map"></i><span>街区</span></button>
         <button data-open="help"><i data-icon="gamepad"></i><span>操作</span></button>
       </nav>
@@ -74,10 +74,10 @@
       <footer class="dock">
         <button class="selected" data-open="home"><i data-icon="home"></i> 首页</button>
         <button data-open="garage"><i data-icon="car"></i> 载具</button>
-        <button class="dock-armory" data-open="armory"><i data-icon="target"></i> 武器</button>
+        <button class="dock-armory" data-open="armory"><i data-icon="blaster"></i> 武器</button>
         <button data-open="shop"><i data-icon="bag"></i> 商城</button>
         <button data-open="sign"><i data-icon="gift"></i> 福利</button>
-        <button data-start="race"><i data-icon="flag"></i> 竞速</button>
+        <button data-start="race"><i data-icon="finish"></i> 竞速</button>
         <button class="dock-more" data-open="more"><i data-icon="menu"></i> 更多</button>
         <button class="broadcast" data-open="notice">
           <b>港务广播</b> <span id="ticker">海堤路灯正常。路灯尽头的海，请勿驾车驶入。</span>
@@ -103,11 +103,15 @@
           </button>
         </div>
         <div id="wanted" class="wanted" hidden>
+          <i data-icon="police"></i>
           <span id="wanted-stars" class="wanted-stars"></span>
           <span id="wanted-status"></span>
         </div>
         <div class="hud-wallet">
-          <span><b id="wallet-value">0</b> 潮票</span><span id="health-value">100 生命</span>
+          <span
+            ><i data-icon="coin"></i><span><b id="wallet-value">0</b> 潮票</span></span
+          >
+          <span><i data-icon="heart"></i><span id="health-value">100 生命</span></span>
         </div>
         <div class="minimap">
           <canvas id="map-mini" width="176" height="176" aria-label="小地图"></canvas
@@ -116,14 +120,22 @@
         <div id="drive-hud" class="drive-hud" hidden>
           <div><strong id="speed">0</strong> <small>KM/H</small></div>
           <b id="gear">N</b><span class="condition"><i id="condition"></i></span
-          ><small id="car-label"></small><small id="drive-status"></small>
+          ><small id="car-label"></small>
+          <small class="drive-condition"
+            ><i data-icon="wrench"></i><span id="drive-status"></span
+          ></small>
         </div>
         <div id="foot-hud" class="foot-hud">
           <div id="vitals" class="vitals"><i></i></div>
-          <b id="weapon-label">徒手</b><strong id="ammo"></strong>
+          <div class="equipped">
+            <i id="weapon-icon" data-icon="fist"></i><b id="weapon-label">徒手</b>
+          </div>
+          <strong id="ammo"></strong>
         </div>
         <div class="interaction" id="interaction" hidden>
-          <button type="button" data-game="use"><kbd>E</kbd><span></span></button>
+          <button type="button" data-game="use">
+            <kbd>E</kbd><i id="interaction-icon" data-icon="car"></i><span></span>
+          </button>
         </div>
         <div id="crosshair" class="crosshair" aria-hidden="true" hidden></div>
         <div id="game-gloss" class="game-gloss" aria-hidden="true"></div>
@@ -132,18 +144,30 @@
         <div id="touch-look" class="touch-look"></div>
         <div id="stick" class="stick"><span></span></div>
         <div class="touch-buttons foot-controls">
-          <button data-hold="sprint" aria-label="冲刺"><i data-icon="bolt"></i></button>
-          <button data-game="switch" aria-label="切换武器"><i data-icon="repeat"></i></button>
-          <button data-game="reload" aria-label="装填"><i data-icon="reload"></i></button>
-          <button data-game="aim" aria-label="瞄准"><i data-icon="target"></i></button>
+          <button data-hold="sprint" aria-label="冲刺">
+            <i data-icon="sprint"></i><span>冲刺</span>
+          </button>
+          <button data-game="switch" aria-label="切换武器">
+            <i data-icon="repeat"></i><span>切换</span>
+          </button>
+          <button data-game="reload" aria-label="装填">
+            <i data-icon="magazine"></i><span>装填</span>
+          </button>
+          <button data-game="aim" aria-label="瞄准"><i data-icon="target"></i><span>瞄准</span></button>
           <button id="touch-attack" class="primary-touch" data-hold="fire" aria-label="攻击">
-            <i data-icon="fire"></i>
+            <i id="touch-attack-icon" data-icon="fist"></i><span id="touch-attack-label">出拳</span>
           </button>
         </div>
         <div class="touch-buttons car-controls">
-          <button data-hold="hand" aria-label="手刹"><i data-icon="pause"></i></button>
-          <button data-hold="reverse" aria-label="刹车或倒车">刹车</button>
-          <button class="primary-touch" data-hold="gas" aria-label="油门">油门</button>
+          <button data-hold="hand" aria-label="手刹">
+            <i data-icon="handbrake"></i><span>手刹</span>
+          </button>
+          <button data-hold="reverse" aria-label="刹车或倒车">
+            <i id="touch-brake-icon" data-icon="brake"></i><span id="touch-brake-label">刹车</span>
+          </button>
+          <button class="primary-touch" data-hold="gas" aria-label="油门">
+            <i data-icon="pedal"></i><span>油门</span>
+          </button>
         </div>
       </div>
     </section>

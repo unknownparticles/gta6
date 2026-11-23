@@ -436,7 +436,7 @@ function renderPanel(name, data) {
           const price = save.perks ? '使用补给券' : '补给弹药 · ' + weapon.ammoPrice + ' 潮票';
           return (
             '<article class="tile">' +
-            icon('target') +
+            icon(index === 0 ? 'blaster' : 'pulse') +
             '<b>' +
             weapon.name +
             '</b><small>弹匣上限 ' +
@@ -650,6 +650,7 @@ function renderPanel(name, data) {
     hospital() {
       return (
         '<div class="tile hospital-receipt"><strong>' +
+        icon('hospital') +
         text(data.reason) +
         '</strong><span>失去全部现金 <b>' +
         text(data.lost) +

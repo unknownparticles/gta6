@@ -806,6 +806,24 @@ a {
 .wallet-panel b {
   color: var(--gold);
 }
+.hud-wallet > span,
+.equipped,
+.hospital-receipt > strong {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.hud-wallet i[data-icon='coin'] {
+  color: var(--gold);
+}
+.hud-wallet i[data-icon='heart'],
+.hospital-receipt > strong > i {
+  color: var(--mint);
+}
+.equipped {
+  justify-content: flex-end;
+  margin-top: 5px;
+}
 .hospital-receipt {
   border-color: #83decb;
 }
@@ -930,6 +948,12 @@ a {
 .drive-hud #drive-status {
   display: block;
   color: #f4d1ad;
+}
+.drive-hud .drive-condition {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
 }
 .drive-hud b {
   color: var(--gold);
@@ -1067,10 +1091,18 @@ a {
   font-weight: 900;
   display: grid;
   place-items: center;
+  align-content: center;
+  gap: 2px;
+  padding: 0;
   touch-action: none;
 }
 .touch-buttons button i {
-  font-size: 1.08rem;
+  font-size: 0.95rem;
+}
+.touch-buttons button span:not(.icon) {
+  font-size: 0.64rem;
+  line-height: 1;
+  white-space: nowrap;
 }
 .touch-buttons .primary-touch {
   width: 53px;
@@ -1108,6 +1140,9 @@ a {
 .play.touch-mode .interaction {
   z-index: 2;
   bottom: 15px;
+}
+.play.touch-mode:not(.driving) .interaction {
+  bottom: 64px;
 }
 .play.touch-mode .interaction kbd {
   display: none;

@@ -1,6 +1,7 @@
 import * as T from 'three';
 import { cars, districtAt, paints, raceRoute, roads, weapons, zones } from './data.js';
 import { drive, pedestrianContact, vehicleContact } from './driving.js';
+import { setIcon } from './icons.js';
 import { createInput } from './input.js';
 import { distance, direction, drawMap, inHarbor, routeTo } from './map.js';
 import { addHeat, advanceSearch, freshAlert } from './wanted.js';
@@ -539,6 +540,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     if (mission?.stage === 'take' && within(zones.garage) && slow) {
       return {
         text: '领取备用灯控盒',
+        icon: 'box',
         run: () => {
           mission.stage = 'check';
           audio.cue('mark');
@@ -557,10 +559,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       };
     }
     if (mission?.stage === 'deliver' && within(zones.delivery, 10) && slow && !alert.level) {
-      return { text: '交付灯控盒', run: completeMission };
+      return { text: '交付灯控盒', icon: 'box', run: completeMission };
     }
     if (vehicle && slow && !mission && !alert.level && !race && within(zones.race, 10)) {
-      return { text: '开始海堤计时赛', run: startRace };
+      return { text: '开始海堤计时赛', icon: 'finish', run: startRace };
     }
     if (
       vehicle &&
@@ -573,15 +575,20 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     ) {
       return {
         text: '修复当前车辆',
+        icon: 'wrench',
         run: () => {
           vehicle.hp = 100;
           callbacks.toast('车辆已修复');
         },
       };
     }
-    if (vehicle) return Math.abs(vehicle.speed) <= 3.5 && !race ? { text: '下车', run: exitCar } : null;
+    if (vehicle)
+      return Math.abs(vehicle.speed) <= 3.5 && !race
+        ? { text: '下车', icon: 'exit', run: exitCar }
+        : null;
     const nearby = owned.find((car) => distance(x, z, [car.x, car.z]) < 5.3);
-    if (nearby) return { text: '上车 · ' + cars[nearby.type].name, run: () => enterCar(nearby) };
+    if (nearby)
+      return { text: '上车 · ' + cars[nearby.type].name, icon: 'car', run: () => enterCar(nearby) };
     const street = traffic.find(
       (car) =>
         car.group.visible &&
@@ -591,8 +598,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     );
     if (street) {
       return street.stolen
-        ? { text: '上车 · ' + cars[street.type].name, run: () => enterCar(street) }
-        : { text: '抢车 · ' + cars[street.type].name, run: () => takeStreetCar(street) };
+        ? { text: '上车 · ' + cars[street.type].name, icon: 'car', run: () => enterCar(street) }
+        : { text: '抢车 · ' + cars[street.type].name, icon: 'key', run: () => takeStreetCar(street) };
     }
     if (!mission && !alert.level && within(zones.garage, 10)) {
       return { text: '接取「夜班急件」', run: startMission };
@@ -601,14 +608,16 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       if (!practice && (intro === 'training' || !save.trained)) {
         return {
           text: save.pistol || save.trained ? '开始武器训练' : '领取电弧手枪 · 训练',
+          icon: 'target',
           run: startTraining,
         };
       }
-      return { text: '打开武器商店', run: () => callbacks.panel('armory') };
+      return { text: '打开武器商店', icon: 'blaster', run: () => callbacks.panel('armory') };
     }
     if (!vehicle && within(zones.hospital, 7) && player.hp < 100 && !alert.level) {
       return {
         text: '接受治疗',
+        icon: 'hospital',
         run: () => {
           player.hp = 100;
           callbacks.toast('生命值已恢复');
@@ -1481,7 +1490,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     ui['objective-detail'].textContent = objective[2];
     nearAction = interaction();
     ui.interaction.hidden = !nearAction;
-    if (nearAction) ui.interaction.querySelector('span').textContent = nearAction.text;
+    if (nearAction) {
+      ui.interaction.querySelector('button > span').textContent = nearAction.text;
+      setIcon(ui['interaction-icon'], nearAction.icon || 'flag');
+    }
     ui.wanted.hidden = !alert.level;
     if (alert.level) {
       const status =
@@ -1503,8 +1515,16 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     ui['game-gloss'].classList.toggle('hurt', player.hurt > 0);
     ui['wallet-value'].textContent = String(save.coins);
     ui['health-value'].textContent = Math.ceil(player.hp) + ' 生命';
-    ui['touch-attack'].setAttribute('aria-label', player.gear < 0 ? '出拳' : '开火');
+    const attackLabel = player.gear < 0 ? '出拳' : '开火';
+    const weaponIcon = player.gear < 0 ? 'fist' : player.gear === 0 ? 'blaster' : 'pulse';
+    ui['touch-attack'].setAttribute('aria-label', attackLabel);
+    ui['touch-attack-label'].textContent = attackLabel;
+    setIcon(ui['touch-attack-icon'], weaponIcon);
+    setIcon(ui['weapon-icon'], weaponIcon);
     if (vehicle) {
+      const reversing = vehicle.speed < -0.3;
+      ui['touch-brake-label'].textContent = reversing ? '倒车' : '刹车';
+      setIcon(ui['touch-brake-icon'], reversing ? 'reverse' : 'brake');
       ui.speed.textContent = String(Math.round(Math.abs(vehicle.speed) * 3.6));
       ui.gear.textContent =
         vehicle.hp <= 0 ? '停驶' : Math.abs(vehicle.speed) < 0.3 ? 'N' : vehicle.speed < 0 ? 'R' : 'D';

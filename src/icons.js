@@ -5,6 +5,23 @@ const paths = {
   settings:
     'M12 2l2 3 3-.3 1 3 3 1v4l-3 1-1 3-3-.3-2 3-2-3-3 .3-1-3-3-1v-4l3-1 1-3 3 .3z M12 8a3 3 0 1 0 .01 6 3 3 0 0 0-.01-6',
   car: 'M3 17v-5l2-2 2-5h10l2 5 2 2v5h-2v3h-3v-3H8v3H5v-3z M5 10h14 M6 14h2m8 0h2',
+  garage: 'M3 21V8l9-5 9 5v13 M7 21v-9h10v9 M7 15h10m-10 3h10',
+  exit: 'M10 20H4V4h6m4 4 4 4-4 4m-6-4h13',
+  key: 'M9 14a5 5 0 1 0-3-4.6 5 5 0 0 0 1 3l-4 4V21h4v-3h3v-3l1-1M13 8h.01',
+  pedal: 'M9 4h8l-2 15H7L9 4zm2 4h3m-4 4h3m-4 4h3',
+  brake: 'M5 5h14v12H5z M8 9h8m-8 4h8m-4 4v4',
+  reverse: 'M4 9v5h5M4 14a8 8 0 1 1 4 5',
+  handbrake:
+    'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16z M2.5 6.5a10.8 10.8 0 0 0 0 11m19-11a10.8 10.8 0 0 1 0 11 M10 16V8h3a2 2 0 0 1 0 4h-3',
+  wrench: 'M14 6l3 3 4-4a6 6 0 0 1-7.5 7.5l-7 7a2 2 0 0 1-3-3l7-7A6 6 0 0 1 18 2z',
+  heart: 'M20 12c-2.7 3.2-8 7.5-8 7.5S6.7 15.2 4 12C-.5 6.6 6.8 1.6 12 8c5.2-6.4 12.5-1.4 8 4z',
+  hospital: 'M9 3h6v6h6v6h-6v6H9v-6H3V9h6z',
+  police: 'M12 3l2.7 1.5 4.3.3v6c0 4.2-2.9 7.4-7 9.8-4.1-2.4-7-5.6-7-9.8v-6l4.3-.3L12 3z M9 12l2 2 4-4',
+  fist: 'M4 13v-3a1.6 1.6 0 0 1 3.2 0V6.6a1.6 1.6 0 0 1 3.2 0v-.9a1.6 1.6 0 0 1 3.2 0V7a1.6 1.6 0 0 1 3.2 0v1.4a1.6 1.6 0 0 1 3.2 0V13c0 2.5-1 4.6-3 5.5V21H8v-2.5C5.5 17.4 4 15.6 4 13zm3.2-3.4 3.6 2.6m-.4-4v2.4M13.6 7v3.7m3.2-2.3v2.8',
+  blaster: 'M3 6h18v5h-7l-2 3h-2l-2 5H4l2-8H3z M14 11v3h-4m6-5h3',
+  pulse: 'M2 7h4V5h10v2h6v4h-8l-2 3h-2l-2 5H4l2-8H2z M8 8h6m1 3v3h-5',
+  magazine: 'M7 4h10v3l-2 12H5L7 7V4zm0 3h10m-8 4h4m-5 4h4m-7 4v2h10v-2',
+  sprint: 'M16 3a2 2 0 1 0 0 4 2 2 0 0 0 0-4z M5 13l3-4 5 1 3 3h4m-7-3-3 5 3 2v4m-3-6-3 4H3',
   target: 'M12 3a9 9 0 1 0 .01 18A9 9 0 0 0 12 3 M12 7a5 5 0 1 0 .01 10A5 5 0 0 0 12 7 M12 11v2',
   map: 'M2 6l7-3 6 3 7-3v15l-7 3-6-3-7 3z M9 3v15m6-12v15',
   gamepad:
@@ -14,6 +31,8 @@ const paths = {
   ticket: 'M3 6h18v4a2 2 0 0 0 0 4v4H3v-4a2 2 0 0 0 0-4z M9 9h6m-6 3h6m-6 3h3',
   bag: 'M4 8h16l1 13H3z M8 10V6a4 4 0 0 1 8 0v4',
   flag: 'M5 22V3m0 1c5-4 8 4 15 0v10c-7 4-10-4-15 0',
+  finish: 'M5 22V3h15v12H5m5-12v12m5-12v12M5 7h15M5 11h15',
+  box: 'M3 6l9-3 9 3v12l-9 3-9-3z M3 6l9 3 9-3m-9 3v12m-5-16 9 3',
   home: 'M3 10l9-7 9 7m-2-1v11h-5v-6h-4v6H5V9',
   menu: 'M4 6h16M4 12h16M4 18h16',
   pause: 'M8 5v14m8-14v14',
@@ -25,27 +44,37 @@ const paths = {
   rotate:
     'M8 2h8a1 1 0 0 1 1 1v16a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z M11 17h2 M21 7c3 4 2 8-1 11m0-3v3h3 M3 7C0 10 0 14 3 17',
 };
+const vectorPaths = new Map();
+export function iconPath(name) {
+  if (!vectorPaths.has(name)) vectorPaths.set(name, new Path2D(paths[name]));
+  return vectorPaths.get(name);
+}
+
 const rasters = new Map();
-export function icons(root = document) {
-  for (const node of root.querySelectorAll('i[data-icon]')) {
-    const name = node.dataset.icon;
-    if (node.firstElementChild || !paths[name]) continue;
-    if (!rasters.has(name)) {
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = 112;
-      const ctx = canvas.getContext('2d');
-      ctx.scale(112 / 24, 112 / 24);
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth = 1.72;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.stroke(new Path2D(paths[name]));
-      rasters.set(name, 'url(' + canvas.toDataURL() + ')');
-    }
-    const mark = document.createElement('span');
-    mark.className = 'icon';
-    mark.style.maskImage = rasters.get(name);
-    mark.style.webkitMaskImage = rasters.get(name);
-    node.append(mark);
+export function setIcon(node, name) {
+  if (!paths[name] || node.dataset.renderedIcon === name) return;
+  if (!rasters.has(name)) {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 112;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(112 / 24, 112 / 24);
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.72;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke(iconPath(name));
+    rasters.set(name, 'url(' + canvas.toDataURL() + ')');
   }
+  const mark = node.firstElementChild || document.createElement('span');
+  mark.className = 'icon';
+  mark.style.maskImage = rasters.get(name);
+  mark.style.webkitMaskImage = rasters.get(name);
+  if (!mark.parentNode) node.append(mark);
+  node.dataset.icon = name;
+  node.dataset.renderedIcon = name;
+  node.setAttribute('aria-hidden', 'true');
+}
+
+export function icons(root = document) {
+  for (const node of root.querySelectorAll('i[data-icon]')) setIcon(node, node.dataset.icon);
 }
