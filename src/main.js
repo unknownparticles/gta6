@@ -15,9 +15,11 @@ const store = loadSave();
 const save = store.data;
 const audio = audioSystem(save.settings);
 const mobilePointer = matchMedia('(pointer: coarse)');
-const touch = () =>
-  navigator.maxTouchPoints > 0 &&
-  (mobilePointer.matches || /iPhone|iPad|Android/i.test(navigator.userAgent));
+const appleTablet =
+  /iPad/i.test(navigator.userAgent) ||
+  (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+const handheld = appleTablet || /iPhone|iPod|Android|Mobile|Tablet/i.test(navigator.userAgent);
+const touch = () => handheld || (navigator.maxTouchPoints > 0 && mobilePointer.matches);
 const messages = [
   '海堤路灯正常。路灯尽头的海，请勿驾车驶入。',
   '晚钟车库今日营业。刹车与快乐均为消耗品。',
@@ -116,7 +118,9 @@ function rotationState() {
       $('#rotation-note').textContent = '拉宽窗口后可继续游玩。';
     } else {
       const tablet =
-        /iPad|Tablet/i.test(navigator.userAgent) || Math.min(screen.width, screen.height) >= 700;
+        appleTablet ||
+        /Tablet/i.test(navigator.userAgent) ||
+        Math.min(screen.width, screen.height) >= 700;
       $('#rotation-title').textContent = tablet ? '请旋转平板方向游玩' : '请旋转手机方向游玩';
       $('#rotation-note').textContent =
         width > height ? '当前窗口太窄。退出分屏或扩大窗口后继续。' : '把设备横过来即可进入潮汐市。';
@@ -402,7 +406,9 @@ function renderPanel(name, data) {
             ),
           )
           .join('') +
-        '</div><p>设为出发车辆后，下次离开大厅时生效。已损坏车辆可在车库旁修复。</p>'
+        '</div><p>停车场可以试驾厢式车，车库旁可以修复车辆。</p><div class="actions">' +
+        button('用当前车辆出发', 'data-start="free"', primary) +
+        '</div>'
       );
     },
     armory() {
@@ -418,17 +424,24 @@ function renderPanel(name, data) {
               '</b><small>弹匣 ' +
               weapon.cap +
               ' 发</small><small>' +
-              (save.trained ? '已解锁' : index ? '击中三个靶牌后解锁' : '晚钟车库训练区领取') +
+              (save.trained || (index === 0 && save.pistol)
+                ? '已解锁'
+                : index
+                  ? '击中三个靶牌后解锁'
+                  : '在训练场领取') +
               '</small></article>',
           )
           .join('') +
-        '</div><p>训练靶场在维修街停车场的北侧。车库可补给弹药和耐久。</p>' +
-        button('从车库出发', 'data-start="free"', primary)
+        '</div><p>击中三个靶牌可解锁脉冲发射器。训练场也可补充弹药和耐久。</p><div class="actions">' +
+        button('前往训练场', 'data-start="training"', primary) +
+        '</div>'
       );
     },
     districts() {
       return (
-        '<canvas class="map-full" width="450" height="450" aria-label="潮汐市全图"></canvas><div class="row-grid">' +
+        '<div class="tile"><b>维修街对峙</b><small>盐线与锈锚在维修街碰面。靠近后可观察事件。</small><div class="actions">' +
+        button('前往帮派事件', 'data-start="gang"', primary) +
+        '</div></div><canvas class="map-full" width="450" height="450" aria-label="潮汐市全图"></canvas><div class="row-grid">' +
         districts
           .map(
             (district, index) =>
@@ -810,12 +823,6 @@ screen.orientation?.addEventListener('change', rotationState);
 mobilePointer.addEventListener('change', rotationState);
 icons();
 document.documentElement.classList.toggle('reduce', !save.settings.movement);
-const hero = import.meta.env.BASE_URL + 'media/harbor.webp';
-document.documentElement.style.setProperty('--hero', 'url("' + hero + '")');
-document.documentElement.style.setProperty(
-  '--car-preview',
-  'url("' + import.meta.env.BASE_URL + 'media/garage.webp")',
-);
 refreshLobby();
 rotationState();
 if (!store.available) toast('本机存储不可用，本次进度只保留到页面关闭。');

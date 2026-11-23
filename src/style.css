@@ -91,7 +91,7 @@ a {
   pointer-events: none;
 }
 .lobby:before {
-  background: var(--hero, none) 47% 53% / cover no-repeat;
+  background: url('/media/harbor.webp') 47% 53% / cover no-repeat;
 }
 .lobby:after {
   background:
@@ -537,7 +537,8 @@ a {
 .broadcast b {
   color: var(--pink);
 }
-.dock .dock-more {
+.dock .dock-more,
+.dock .dock-armory {
   display: none;
 }
 .panel {
@@ -1080,6 +1081,7 @@ a {
 .toast {
   position: fixed;
   z-index: 10;
+  pointer-events: none;
   right: 14px;
   bottom: max(14px, env(safe-area-inset-bottom));
   max-width: calc(100vw - 28px);
@@ -1090,6 +1092,18 @@ a {
   border-radius: 5px;
   color: #fff4ff;
   box-shadow: 0 4px 20px #15061a99;
+}
+.play.touch-mode:not([hidden]) ~ .toast {
+  top: max(106px, calc(env(safe-area-inset-top) + 88px));
+  right: auto;
+  bottom: auto;
+  left: 50%;
+  width: max-content;
+  max-width: 46vw;
+  transform: translateX(-50%);
+  padding: 6px 9px;
+  text-align: center;
+  font-size: 0.8rem;
 }
 @media (max-width: 940px) {
   .lobby {
@@ -1259,7 +1273,8 @@ a {
     font-size: 0.69rem;
     gap: 3px;
   }
-  .dock .dock-more {
+  .dock .dock-more,
+  .dock .dock-armory {
     display: flex;
   }
   .dock .broadcast {
@@ -1372,7 +1387,7 @@ a {
   display: block;
   width: 100%;
   aspect-ratio: 300/190;
-  background: var(--car-preview) var(--car-offset) center/300% 100%;
+  background: url('/media/garage.webp') var(--car-offset) center / 300% 100%;
   border-radius: 4px;
 }
 .paint-dot {

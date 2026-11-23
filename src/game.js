@@ -353,7 +353,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     }
     for (const p of pedestrians) {
       [p.x, p.z] = p.home;
-      p.flee = p.angry = 0;
+      p.flee = p.angry = p.wait = 0;
       p.health = 100;
     }
     clearAlert();
@@ -364,7 +364,13 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     } else {
       newVehicle(spawnCar, zones.car);
       if (spawnCar !== 'van') newVehicle('van', zones.van, -Math.PI / 2);
-      [player.x, player.z] = zones.spawn;
+      const spawn =
+        mode === 'training'
+          ? zones.training
+          : mode === 'gang'
+            ? [zones.gang[0], zones.gang[1] + 6]
+            : zones.spawn;
+      [player.x, player.z] = spawn;
     }
     player.yaw = cameraYaw = 0;
     cameraPitch = 0.1;
@@ -481,13 +487,24 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       return { text: '接取「夜班急件」', run: startMission };
     }
     if (within(zones.training, 7)) {
-      if (!save.trained && !practice) return { text: '领取电弧手枪 · 训练', run: startTraining };
+      if (!practice && (intro === 'training' || !save.trained)) {
+        return {
+          text: save.pistol || save.trained ? '开始武器训练' : '领取电弧手枪 · 训练',
+          run: startTraining,
+        };
+      }
       return { text: '补给弹药', run: replenish };
     }
     if (within(zones.gang, 8) && !mission && eventTime <= 0 && !alert.level) {
       return {
         text: '观察街区对峙',
         run: () => {
+          intro = 'free';
+          for (const member of pedestrians.filter((pedestrian) => pedestrian.event)) {
+            [member.x, member.z] = member.home;
+            member.flee = member.angry = member.wait = 0;
+            member.health = 100;
+          }
           eventTime = 28;
           callbacks.toast('街区事件：盐线与锈锚正在对峙');
         },
@@ -519,6 +536,11 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
 
   function startTraining() {
     practice = true;
+    if (intro === 'training') intro = 'free';
+    for (const target of targets) {
+      target.hit = false;
+      target.plate.material.color.setHex(0xffa259);
+    }
     save.pistol = true;
     store.write();
     player.gear = 0;
@@ -561,11 +583,13 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     audio.cue('mark');
     if (targets.every((target) => target.hit)) {
       practice = false;
+      audio.cue('win');
       if (!save.trained) {
         save.trained = true;
         store.write();
-        audio.cue('win');
         callbacks.toast('训练完成 · 已解锁脉冲发射器，按 Q 切换');
+      } else {
+        callbacks.toast('训练完成 · 三个靶牌都已命中');
       }
     }
   }
@@ -1022,6 +1046,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     if (race) return race.count > 0 ? zones.race : raceRoute[race.index];
     if (practice) return targetPositions[targets.findIndex((target) => !target.hit)] || zones.training;
     if (intro === 'race') return zones.race;
+    if (intro === 'training') return zones.training;
+    if (intro === 'gang') return zones.gang;
     if (eventTime > 0) return zones.gang;
     if (!vehicle && distance(player.x, player.z, zones.spawn) < 25) return zones.car;
     return null;
@@ -1046,6 +1072,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       ];
     if (eventTime > 0) return ['街区事件', '盐线 ↔ 锈锚', '两帮对峙 · ' + Math.ceil(eventTime) + ' 秒'];
     if (intro === 'race') return ['海堤计时赛', '前往海堤起点', '停车后点击交互开始'];
+    if (intro === 'training') return ['武器训练', '维修街训练场', '靠近训练场标记并交互'];
+    if (intro === 'gang') return ['街区事件', '维修街对峙', '接近标记并交互以观察事件'];
     if (relation) return ['街区居民', relation, '远离后，街区会恢复日常活动'];
     if (!vehicle && target) return ['自由模式', '在晚钟车库附近找辆车', '靠近车辆即可上车'];
     return ['自由模式', '潮汐市 · 自由巡游', '到车库接任务 · 去海堤试试计时赛'];
