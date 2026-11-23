@@ -34,3 +34,11 @@
 
 - 优先选允许商用、修改和随网页分发的素材。CC0 素材按作者记录来路。CC BY 4.0 作品在游戏致谢与素材清单中列出曲名、作者、原始链接、授权链接和剪辑变更。[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)、[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/deed.zh-hans)
 - 导入时按实际文件保存来源页面、包版本、许可文本及修改记录。界面、车辆与配乐采用有明确来源的素材和原创内容。
+
+## 已随试玩版发布
+
+| 文件 | 作者及变更 | 来源 |
+| --- | --- | --- |
+| `public/media/models/` 中的车辆、仓库、集装箱、路灯、护栏和调色板 | Kenney，CC0。选用 Car Kit 3.1、City Kit Industrial 2.0 和 City Kit Roads 中的部分 GLB。调色板分包命名并修改对应模型的贴图路径，许可文本随模型分发。 | [Car Kit](https://opengameart.org/content/car-kit)、[City Kit Industrial](https://opengameart.org/comment/113019)、[City Kit Roads](https://kenney.nl/assets/city-kit-roads) |
+| `public/media/synth-wave.mp3` | Alex McCulloch，CC0。取原曲 00:11 起的 36 秒，加淡入淡出，以 96 kbps 发布。 | [Synth Wave](https://opengameart.org/content/synth-wave-alex-mcculloch-august-172021) |
+| `public/media/harbor.webp`、`public/media/garage.webp`、`public/media/icon.png` | 大厅封面和车库预览由本作海滨场景和车模渲染，站点图标截取自车库预览。 | [素材渲染页面](scripts/poster.html) |

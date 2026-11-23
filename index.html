@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <meta name="theme-color" content="#150c29" />
+    <link rel="icon" type="image/png" href="/media/icon.png" />
+    <meta name="description" content="潮线夜驶。沿着霓虹海岸，在浏览器中体验一座虚构的开放城市。" />
+    <title>潮线夜驶 · 港区试玩</title>
+  </head>
+  <body>
+    <main id="lobby" class="lobby">
+      <header class="mast">
+        <button class="passport" data-open="profile">
+          <span class="avatar" aria-hidden="true"><i data-icon="user"></i></span>
+          <span
+            ><b id="player-name">未登记车手</b><small id="profile-label">模拟登录 / 注册</small></span
+          >
+          <em id="vip">VIP 0</em>
+        </button>
+        <span class="edition"><i></i> 潮汐港区 · 本机试玩</span>
+        <div class="top-actions">
+          <button class="balance" data-open="shop">
+            <i data-icon="coin"></i><b id="coin-count">0</b><span>潮票</span>
+          </button>
+          <button class="square" data-open="notice" aria-label="公告"><i data-icon="bell"></i></button>
+          <button class="square" data-open="settings" aria-label="设置">
+            <i data-icon="settings"></i>
+          </button>
+        </div>
+      </header>
+      <nav class="rail" aria-label="试玩内容">
+        <button data-open="garage"><i data-icon="car"></i><span>车库</span></button>
+        <button data-open="armory"><i data-icon="target"></i><span>装备</span></button>
+        <button data-open="districts"><i data-icon="map"></i><span>街区</span></button>
+        <button data-open="help"><i data-icon="gamepad"></i><span>操作</span></button>
+      </nav>
+      <div class="hero-title">
+        <p><span></span> 潮汐市 · 日落之后</p>
+        <h1>潮线<span>夜驶</span></h1>
+        <div class="hero-en">TIDELINE <strong>DRIVE</strong></div>
+        <div class="hero-stamp">港区开服 <b>试玩季</b></div>
+      </div>
+      <aside class="promos" aria-label="模拟运营活动">
+        <button class="promo recharge" data-open="confirm-pack" data-id="0">
+          <span class="ribbon">港区欢迎礼</span><span class="promo-art"><i data-icon="crown"></i></span>
+          <strong>模拟首充 <em>0 元</em></strong
+          ><small>送镀金涂装 · 实付 0 元</small>
+          <span class="promo-go">去领取 ›</span>
+        </button>
+        <button class="promo sign" data-open="sign">
+          <span class="ribbon">签到有礼</span><span class="promo-art"><i data-icon="gift"></i></span>
+          <strong>七日签到</strong><small>第七天送限定镀铬涂装</small>
+          <span id="quick-days" class="quick-days" aria-hidden="true"></span>
+        </button>
+        <button class="promo pass" data-open="pass">
+          <span class="ribbon">S1</span><strong>夜班通行证</strong><small>开得远，就算有资历</small
+          ><i data-icon="ticket"></i>
+        </button>
+        <button class="promo shop" data-open="shop">
+          <i data-icon="bag"></i><span><strong>潮票商城</strong><small>模拟礼包与涂装</small></span
+          ><span class="chevron">›</span>
+        </button>
+      </aside>
+      <div class="launch">
+        <button id="free-start" class="launch-main" data-start="free">
+          <i data-icon="gamepad"></i><span><b>开始自由模式</b><small>进入潮汐市</small></span
+          ><span class="launch-arrow">»</span>
+        </button>
+        <button class="launch-mission" data-start="mission">
+          <i data-icon="flag"></i><span><b>夜班急件</b><small>剧情任务</small></span>
+        </button>
+      </div>
+      <footer class="dock">
+        <button class="selected" data-open="home"><i data-icon="home"></i> 首页</button>
+        <button data-open="garage"><i data-icon="car"></i> 载具</button>
+        <button data-open="shop"><i data-icon="bag"></i> 商城</button>
+        <button data-open="sign"><i data-icon="gift"></i> 福利</button>
+        <button data-start="race"><i data-icon="flag"></i> 竞速</button>
+        <button class="dock-more" data-open="more"><i data-icon="menu"></i> 更多</button>
+        <button class="broadcast" data-open="notice">
+          <b>港务广播</b> <span id="ticker">海堤路灯正常。路灯尽头的海，请勿驾车驶入。</span>
+        </button>
+      </footer>
+    </main>
+    <section id="play" class="play" aria-label="潮汐市" hidden>
+      <canvas id="world" tabindex="0" aria-label="三维游戏画面"></canvas>
+      <div class="hud">
+        <div class="hud-location">
+          <span id="district-mark">02</span>
+          <div><strong id="district">维修街</strong><small>TIDELINE CITY</small></div>
+        </div>
+        <div id="objective" class="objective">
+          <small id="objective-label">自由模式</small><strong id="objective-title"></strong
+          ><span id="objective-detail"></span>
+        </div>
+        <div class="hud-actions">
+          <button type="button" class="square" data-game="map" aria-label="打开地图">
+            <i data-icon="map"></i></button
+          ><button type="button" class="square" data-game="pause" aria-label="暂停">
+            <i data-icon="pause"></i>
+          </button>
+        </div>
+        <div id="wanted" class="wanted" hidden></div>
+        <div class="minimap">
+          <canvas id="map-mini" width="176" height="176" aria-label="小地图"></canvas
+          ><small>潮汐市地图</small>
+        </div>
+        <div id="drive-hud" class="drive-hud" hidden>
+          <div><strong id="speed">0</strong> <small>KM/H</small></div>
+          <b id="gear">N</b><span class="condition"><i id="condition"></i></span
+          ><small id="car-label"></small>
+        </div>
+        <div id="foot-hud" class="foot-hud">
+          <div id="vitals" class="vitals"><i></i></div>
+          <b id="weapon-label">徒手</b><strong id="ammo"></strong>
+        </div>
+        <div class="interaction" id="interaction" hidden>
+          <button type="button" data-game="use"><kbd>E</kbd><span></span></button>
+        </div>
+        <div id="crosshair" class="crosshair" aria-hidden="true" hidden></div>
+        <div id="game-gloss" class="game-gloss" aria-hidden="true"></div>
+      </div>
+      <div id="touch" class="touch" hidden>
+        <div id="touch-look" class="touch-look"></div>
+        <div id="stick" class="stick"><span></span></div>
+        <div class="touch-buttons foot-controls">
+          <button data-hold="sprint" aria-label="冲刺"><i data-icon="bolt"></i></button>
+          <button data-game="switch" aria-label="切换武器"><i data-icon="repeat"></i></button>
+          <button data-game="reload" aria-label="装填"><i data-icon="reload"></i></button>
+          <button data-game="aim" aria-label="瞄准"><i data-icon="target"></i></button>
+          <button class="primary-touch" data-hold="fire" aria-label="开火">
+            <i data-icon="fire"></i>
+          </button>
+        </div>
+        <div class="touch-buttons car-controls">
+          <button data-hold="hand" aria-label="手刹"><i data-icon="pause"></i></button>
+          <button data-hold="reverse" aria-label="刹车或倒车">刹车</button>
+          <button class="primary-touch" data-hold="gas" aria-label="油门">油门</button>
+        </div>
+      </div>
+    </section>
+    <dialog id="panel" class="panel" aria-labelledby="panel-title">
+      <div class="panel-frame">
+        <header>
+          <div>
+            <p id="panel-kicker">潮汐市</p>
+            <h2 id="panel-title"></h2>
+          </div>
+          <button class="square close" type="button" data-panel-close aria-label="关闭">
+            <i data-icon="close"></i>
+          </button>
+        </header>
+        <div id="panel-content" class="panel-content"></div>
+      </div>
+    </dialog>
+    <section id="rotation" class="rotation" hidden aria-labelledby="rotation-title">
+      <div class="rotate-glyph"><i data-icon="rotate"></i></div>
+      <h2 id="rotation-title">请旋转手机方向游玩</h2>
+      <p id="rotation-note">把设备横过来即可进入潮汐市。</p>
+    </section>
+    <div id="toast" class="toast" role="status" hidden></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
