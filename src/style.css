@@ -248,31 +248,30 @@ a {
   background: var(--pink);
 }
 .hero-title h1 {
-  line-height: 0.98;
-  font-size: clamp(3.25rem, 7.2vw, 7.6rem);
-  font-weight: 1000;
-  letter-spacing: -0.085em;
-  transform: skew(-5deg);
-  margin: 0.19em 0 0.1em;
+  color: #fff0c7;
+  font-family: Impact, 'Arial Black', system-ui, sans-serif;
+  font-size: clamp(5rem, 12vw, 10.5rem);
+  font-weight: 900;
+  letter-spacing: 0.015em;
+  line-height: 0.91;
+  margin: 0.06em 0 0.14em;
   -webkit-text-stroke: 1px #fff4;
 }
 .hero-title h1 span {
   color: #ffa5e0;
 }
-.hero-en {
+.hero-subtitle {
   display: flex;
   align-items: baseline;
   gap: 0.64rem;
-  font-family: Impact, 'Arial Black', sans-serif;
-  font-size: clamp(2rem, 4.1vw, 4.25rem);
-  letter-spacing: 0.075em;
+  font-size: clamp(1.75rem, 3.8vw, 3.75rem);
   line-height: 1;
 }
-.hero-en strong {
-  color: #ffe3a6;
+.hero-subtitle strong {
+  color: #fff6fb;
   font-weight: 900;
 }
-.hero-en small {
+.hero-subtitle small {
   color: #fff3fb;
   font:
     800 clamp(0.75rem, 1.15vw, 1rem) system-ui,
@@ -1219,10 +1218,10 @@ a {
     margin: 10px 0 0 3%;
   }
   .hero-title h1 {
-    font-size: clamp(2.35rem, 8vw, 4.3rem);
+    font-size: clamp(3.6rem, 10.5vw, 6.25rem);
   }
-  .hero-en {
-    font-size: clamp(1.45rem, 4.3vw, 2.15rem);
+  .hero-subtitle {
+    font-size: clamp(1.4rem, 4.4vw, 2.15rem);
   }
   .hero-stamp {
     margin-top: 4px;
