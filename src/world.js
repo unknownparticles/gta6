@@ -1,3 +1,5 @@
+import { addShantouScenery } from './city-scenery.js';
+import { bridgeAt, groundHeight, interiorAt, landAt, wetlandWaterAt } from './city-layout.js';
 import * as T from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { roads, harbor } from './data.js';
@@ -258,7 +260,7 @@ export function makeCity(scene) {
 
   scene.fog = new T.FogExp2(0x70507f, 0.0054);
   const sky = new T.Mesh(
-    new T.SphereGeometry(430, 32, 18),
+    new T.SphereGeometry(820, 32, 18),
     new T.ShaderMaterial({
       side: T.BackSide,
       depthWrite: false,
@@ -278,30 +280,13 @@ export function makeCity(scene) {
   rim.position.set(100, 60, 160);
   scene.add(ambient, sun, rim);
 
-  box(17, -0.25, 0, 416, 0.48, 413, 0x41384b);
-  box(-363, -0.48, -37, 350, 0.15, 630, 0x323869, 'road');
-  box(47, -0.48, -309, 480, 0.15, 215, 0x323869, 'road');
-  box(-184, 0.45, 0, 2.4, 1.7, 416, 0x897275);
-  box(-185.4, 1.39, 0, 0.4, 0.2, 416, 0xd4a5ad);
-  for (let i = 0; i < 75; i++) {
-    const x = -191 - random() * 160;
-    const z = random() * 500 - 250;
-    box(
-      x,
-      -0.393,
-      z,
-      2 + random() * 16,
-      0.018,
-      0.045 + random() * 0.15,
-      i % 3 === 0 ? 0x865474 : 0x595682,
-      'glow',
-    );
-  }
+  const landmarkSigns = addShantouScenery(scene, { box, batch, block, random: rand(6801) });
+  box(-183.2, 0.45, -85, 1.2, 1.1, 238, 0x897275);
   const roadWidth = 13;
   for (const x of roads.x) {
-    box(x, -0.02, 0, roadWidth, 0.084, 407, 0x302c40, 'road');
-    for (const side of [-1, 1]) box(x + side * 7.1, 0.07, 0, 1.8, 0.14, 406, 0x817181);
-    for (let z = -193; z < 201; z += 6.6) {
+    box(x, -0.02, -29, roadWidth, 0.084, 342, 0x302c40, 'road');
+    for (const side of [-1, 1]) box(x + side * 7.1, 0.07, -29, 1.8, 0.14, 342, 0x817181);
+    for (let z = -193; z < 139; z += 6.6) {
       if (roads.z.some((center) => Math.abs(z - center) < 9)) continue;
       box(x, 0.032, z, 0.13, 0.02, 2.4, 0xd69e70, 'glow');
       if (z % 2 < 1) box(x - 4 + random() * 8, 0.027, z, 1.3, 0.012, 2.5, 0x534363, 'road');
@@ -373,14 +358,11 @@ export function makeCity(scene) {
           const high = column === 1 || row === 0;
           const w = 13 + random() * 8;
           const d = 14 + random() * 7;
-          building(
-            x + a * 15.5,
-            z + b * 15.5,
-            w,
-            (high ? 13 : 7) + random() * (high ? 40 : 17),
-            d,
-            a === b,
-          );
+          const px = x + a * 15.5;
+          const pz = z + b * 15.5;
+          const height = (high ? 13 : 7) + random() * (high ? 40 : 17);
+          if (Math.abs(px + 44) < 28 && Math.abs(pz - 113) < 18) continue;
+          building(px, pz, w, height, d, a === b);
         }
     }
   }
@@ -390,6 +372,7 @@ export function makeCity(scene) {
   }
   for (let i = 0; i < 5; i++) {
     const z = 22 + i * 34;
+    if (z > 165) continue;
     if (!asset('works', 188, z, 20, 13, 15)) building(188, z, 20, 13, 15);
     else block(188, z, 20, 15);
   }
@@ -433,7 +416,7 @@ export function makeCity(scene) {
     box(x, 1.5, z, 5, 3, 5, 0x6e515c);
     block(x, z, 5, 5);
   }
-  for (let z = -173; z < 194; z += 21) {
+  for (let z = -173; z < 161; z += 21) {
     const x = -173 + random() * 6;
     const h = 6.5 + random() * 3.2;
     batch('cylinder', 'solid', x, h / 2, z, 0.48, h, 0.48, 0x573c4d, 0, 0.02, 0.065);
@@ -457,7 +440,7 @@ export function makeCity(scene) {
     if (z % 3 !== 0) box(-179.9, 1.25, z, 0.23, 0.16, 1.4, 0x6df5df, 'glow');
   }
   for (const x of [-159, -70, -16, 64, 141])
-    for (let z = -177; z <= 174; z += 22) {
+    for (let z = -177; z <= 153; z += 22) {
       if (roads.z.some((center) => Math.abs(z - center) < 10)) continue;
       if (!asset('lamp', x, z, 2.1, 6, 1.1)) {
         box(x, 2.9, z, 0.23, 5.8, 0.23, 0x5a4560);
@@ -467,21 +450,10 @@ export function makeCity(scene) {
       box(x + 2.4, 0.085, z + 2.8, 0.65, 0.012, 3.5, x > 100 ? 0x7a5862 : 0x636a85, 'road');
     }
   // Garage, training and the event square keep their approach lanes open.
-  building(12, 113, 22, 8, 13, true);
-  box(12, 2.05, 106.42, 11.4, 3.5, 0.12, 0x3b2c4e);
-  box(12, 4.23, 106.23, 13.4, 0.29, 0.21, 0xff9bd3, 'glow');
   box(20, 0.034, 90, 38, 0.057, 29, 0x635063);
   for (let x = 1; x <= 35; x += 4) box(x, 0.079, 99.4, 0.12, 0.012, 5.4, 0xd8b4a0, 'glow');
   box(18.4, 0.035, 24, 28, 0.058, 24, 0x625569);
   building(41, 19, 16, 14, 12, true);
-  building(44, 103, 15, 10, 14, true);
-  box(47, 5, 36, 21, 10, 13, 0x66648b);
-  box(47, 2.6, 42.54, 8, 4.6, 0.14, 0x2c3758);
-  box(47, 4.9, 43.1, 13, 0.27, 2.9, 0x79eed6, 'glow');
-  box(47, 0.035, 50, 19, 0.08, 13, 0x70576d);
-  box(54.4, 7.4, 42.6, 1.6, 0.45, 0.12, 0x8dfbe4, 'glow');
-  box(54.4, 7.4, 42.6, 0.45, 1.6, 0.12, 0x8dfbe4, 'glow');
-  block(47, 36, 21, 13);
   if (asset('kiosk', 84, -15, 5, 4, 4.5)) block(84, -15, 5, 4.5);
   else building(84, -15, 5, 4, 4.5);
   for (const x of [84, 90, 95]) asset('barrier', x, -23.5, 3, 1, 1);
@@ -529,11 +501,10 @@ export function makeCity(scene) {
     return new T.MeshBasicMaterial({ map: texture, side: T.DoubleSide });
   };
   for (const [label, x, y, z, yaw, color] of [
-    ['晚钟车库', 12, 5.2, 106.19, PI, '#ffb2eb'],
+    ...landmarkSigns,
     ['潮汐货场', 106, 7, -33, 0, '#ffd09b'],
     ['滨海大道', -170, 5, 125, PI / 2, '#8affe2'],
     ['夜班维修街', 39, 4.3, 31, 0, '#ffa4d5'],
-    ['潮汐市医院', 47, 7.4, 42.6, 0, '#8dfbe4'],
   ]) {
     const sign = new T.Mesh(new T.PlaneGeometry(8.5, 2.12), signMaterial(label, color));
     sign.position.set(x, y, z);
@@ -541,8 +512,24 @@ export function makeCity(scene) {
     scene.add(sign);
   }
   return {
-    clear(x, z, radius = 0.55) {
-      if (x < -182 + radius || x > 211 - radius || z < -202 + radius || z > 201 - radius) return false;
+    height: groundHeight,
+    interior: interiorAt,
+    clear(x, z, radius = 0.55, vehicle = false) {
+      const bridge = bridgeAt(x, z);
+      if (bridge) {
+        if (!bridgeAt(x, z, radius)) return false;
+      } else {
+        for (const [dx, dz] of [
+          [0, 0],
+          [radius, 0],
+          [-radius, 0],
+          [0, radius],
+          [0, -radius],
+        ]) {
+          if (!landAt(x + dx, z + dz) || wetlandWaterAt(x + dx, z + dz)) return false;
+        }
+      }
+      if (vehicle && interiorAt(x, z)) return false;
       return !obstacles.some(
         (o) => x + radius > o.x1 && x - radius < o.x2 && z + radius > o.z1 && z - radius < o.z2,
       );

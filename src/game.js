@@ -1,5 +1,6 @@
 import * as T from 'three';
 import { cars, districtAt, paints, raceRoute, roads, weapons, zones } from './data.js';
+import { landmarks } from './city-layout.js';
 import { drive, pedestrianContact, vehicleContact } from './driving.js';
 import { setIcon } from './icons.js';
 import { createInput } from './input.js';
@@ -55,7 +56,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   onLoad('正在布置城市道路');
   const scene = new T.Scene();
   const city = makeCity(scene);
-  const camera = new T.PerspectiveCamera(60, 1, 0.18, 510);
+  const camera = new T.PerspectiveCamera(60, 1, 0.18, 1600);
   const cameraTarget = new T.Vector3();
   const cameraWanted = new T.Vector3();
   const shotOrigin = new T.Vector3();
@@ -294,6 +295,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   let nearAction;
   let viewActive = true;
   let vehicle;
+  let waypoint;
   const owned = [];
   const player = {
     x: 0,
@@ -329,8 +331,14 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   }
 
   function syncMesh(object) {
-    object.group.position.set(object.x, 0, object.z);
+    object.group.position.set(object.x, city.height(object.x, object.z), object.z);
     object.group.rotation.y = object.yaw;
+    const [fx, fz] = forward(object.yaw);
+    object.group.rotation.x = Math.atan2(
+      city.height(object.x + fx * 1.8, object.z + fz * 1.8) -
+        city.height(object.x - fx * 1.8, object.z - fz * 1.8),
+      3.6,
+    );
     if (object.lights?.length)
       object.lights.forEach((light, i) => {
         light.visible = object.hp > 0 && Math.floor(time * 8) % 2 === i;
@@ -393,7 +401,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   }
 
   function setup(mode, spawnCar = save.car) {
-    scene.fog.density = 0.0054;
+    scene.fog.density = 0.0037;
+    waypoint = null;
     alive = true;
     intro = mode;
     race = null;
@@ -805,9 +814,18 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     audio.cue('shot');
     if (save.settings.movement) cameraShake = 0.13;
     const [fx, fz] = forward(cameraYaw);
-    shotOrigin.set(player.x + Math.cos(cameraYaw) * 0.36, 1.27, player.z - Math.sin(cameraYaw) * 0.36);
+    const elevation = city.height(player.x, player.z);
+    shotOrigin.set(
+      player.x + Math.cos(cameraYaw) * 0.36,
+      elevation + 1.27,
+      player.z - Math.sin(cameraYaw) * 0.36,
+    );
     camera.getWorldDirection(shotDirection);
-    const aimPoint = focus.set(player.x + fx * 75, 1.4 + shotDirection.y * 25, player.z + fz * 75);
+    const aimPoint = focus.set(
+      player.x + fx * 75,
+      elevation + 1.4 + shotDirection.y * 25,
+      player.z + fz * 75,
+    );
     const inTraining = distance(player.x, player.z, zones.training) <= 16;
     const candidates =
       practice && inTraining
@@ -818,7 +836,11 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
           ];
     const chosen = attackTarget(candidates, 43, practice && inTraining ? 0.22 : 0.145);
     if (chosen) {
-      aimPoint.set(chosen.x, alert.patrols.includes(chosen) ? 0.92 : 1.6, chosen.z);
+      aimPoint.set(
+        chosen.x,
+        city.height(chosen.x, chosen.z) + (alert.patrols.includes(chosen) ? 0.92 : 1.6),
+        chosen.z,
+      );
       if ('hit' in chosen) {
         targetHit(chosen);
         flashHit();
@@ -963,7 +985,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
           const a = (i * Math.PI) / 4;
           const x = point.x + Math.sin(a) * radius;
           const z = point.z + Math.cos(a) * radius;
-          if (!city.clear(x, z, vehicle ? 1.4 : 0.65)) continue;
+          if (!city.clear(x, z, vehicle ? 1.4 : 0.65, Boolean(vehicle))) continue;
           if (checkAlert && alert.level && inAlert(x, z) !== inAlert(point.x, point.z)) continue;
           return [x, z];
         }
@@ -1082,9 +1104,9 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     const { size } = carSpec(car);
     const [fx, fz] = forward(car.yaw);
     return (
-      city.clear(x, z, size) &&
-      city.clear(x + fx * 1.25, z + fz * 1.25, size) &&
-      city.clear(x - fx * 1.25, z - fz * 1.25, size)
+      city.clear(x, z, size, true) &&
+      city.clear(x + fx * 1.25, z + fz * 1.25, size, true) &&
+      city.clear(x - fx * 1.25, z - fz * 1.25, size, true)
     );
   }
 
@@ -1443,6 +1465,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     if (intro === 'gang') return zones.gang;
     if (intro === 'chase') return streetCarPoint;
     if (eventTime > 0) return zones.gang;
+    if (waypoint) return waypoint.point;
     if (!vehicle && distance(player.x, player.z, zones.spawn) < 25) return zones.car;
     return null;
   }
@@ -1469,13 +1492,21 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     if (intro === 'training') return ['武器训练', '维修街训练场', '靠近训练场标记并交互'];
     if (intro === 'gang') return ['街区事件', '维修街对峙', '接近标记并交互以观察事件'];
     if (intro === 'hospital' && distance(player.x, player.z, zones.hospital) < 15) {
-      return ['潮汐市医院', '生命值已恢复', '出院后可继续在城市里活动'];
+      return ['S城医院', '生命值已恢复', '出院后可继续在城市里活动'];
     }
     if (intro === 'chase') return ['街头追逐', '抢走标记的街车', '上车后会触发警方通缉'];
+    if (waypoint && target === waypoint.point) {
+      const remaining = Math.round(distance(player.x, player.z, target));
+      return [
+        '地标导航',
+        waypoint.name,
+        remaining < 8 ? waypoint.description : '距地标 ' + remaining + ' 米',
+      ];
+    }
     if (relation) return ['街区居民', relation, '远离后，街区会恢复日常活动'];
     if (!vehicle && target)
       return ['自由模式', '在晚钟车库附近找辆车', '靠近自有车可上车，靠近街车可抢车'];
-    return ['自由模式', '潮汐市 · 自由巡游', '到车库接任务 · 去海堤试试计时赛'];
+    return ['自由模式', 'S城 · 自由巡游', '到车库接任务 · 去海堤试试计时赛'];
   }
 
   function updateHud(force = false) {
@@ -1552,6 +1583,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
         punch: player.punch,
         health: player.hp,
         carHealth: vehicle?.hp ?? null,
+        elevation: city.height(player.x, player.z),
+        interior: city.interior(player.x, player.z)?.id ?? null,
         impact: lastCrash > 0 ? lastVehicleImpact : '',
         hitPedestrians: lastPedestrianImpact,
         race: race?.index,
@@ -1566,7 +1599,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     }
     marker.visible = Boolean(target);
     if (target) {
-      marker.position.set(target[0], 0, target[1]);
+      marker.position.set(target[0], city.height(...target), target[1]);
       diamond.position.y = 5.3 + 0.39 * Math.sin(time * 3.6);
       diamond.rotation.y = time * 1.9;
     }
@@ -1574,13 +1607,18 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
 
   function updateCamera(dt, immediate = false) {
     const aiming = !vehicle && player.gear >= 0 && (player.aiming || pad.aiming);
-    const dist = vehicle ? 8.8 : aiming ? 3.0 : 5.1;
-    const high = vehicle ? 4.35 : aiming ? 2.18 : 3.2;
+    const enclosed = !vehicle && city.interior(player.x, player.z);
+    const dist = vehicle ? 8.8 : enclosed ? 2.9 : aiming ? 3.0 : 5.1;
+    const high = vehicle ? 4.35 : enclosed ? 2.25 : aiming ? 2.18 : 3.2;
+    const elevation = city.height(player.x, player.z);
     const [fx, fz] = forward(cameraYaw);
     const strafe = aiming ? 0.72 : 0;
     cameraWanted.set(
       player.x - fx * dist + Math.cos(cameraYaw) * strafe,
-      Math.max(1.5, high + cameraPitch * dist),
+      elevation +
+        (enclosed
+          ? clamp(high + cameraPitch * dist, 1.55, 3.1)
+          : Math.max(1.5, high + cameraPitch * dist)),
       player.z - fz * dist - Math.sin(cameraYaw) * strafe,
     );
     if (cameraShake > 0) cameraWanted.x += Math.sin(time * 115) * cameraShake;
@@ -1601,10 +1639,16 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       }
     }
     camera.position.lerp(cameraWanted, immediate ? 1 : 1 - Math.exp(-dt * 12));
-    const lead = vehicle ? Math.min(11, 5.5 + Math.abs(vehicle.speed) * 0.15) : aiming ? 10 : 4.4;
+    const lead = vehicle
+      ? Math.min(11, 5.5 + Math.abs(vehicle.speed) * 0.15)
+      : enclosed
+        ? 2.5
+        : aiming
+          ? 10
+          : 4.4;
     focus.set(
       player.x + fx * lead,
-      aiming ? 1.45 - cameraPitch * 6 : 1.6 - cameraPitch * 3.4,
+      elevation + (aiming ? 1.45 - cameraPitch * 6 : 1.6 - cameraPitch * 3.4),
       player.z + fz * lead,
     );
     cameraTarget.lerp(focus, immediate ? 1 : 1 - Math.exp(-dt * 16));
@@ -1650,6 +1694,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       player.gear >= 0 && (pad.aiming || player.aiming || player.cooldown > 0),
       Math.sin((player.punch / 0.3) * Math.PI),
     );
+    playerModel.group.position.y += city.height(player.x, player.z);
     updatePedestrians(dt);
     if (paused) return;
     updateRace(dt);
@@ -1764,6 +1809,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       store.write();
     },
     retry,
+    navigate(id) {
+      waypoint = landmarks.find((landmark) => landmark.id === id) || null;
+      updateHud(true);
+    },
     discharge() {
       save.hospitalLoss = null;
       store.write();

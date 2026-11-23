@@ -99,11 +99,24 @@ export const raceRoute = [
   [-78, -152],
   [-8, -152],
 ];
-export const districts = [
-  { name: '滨海大道', mark: '01', color: '#6affde' },
-  { name: '维修街', mark: '02', color: '#f7ce7c' },
-  { name: '潮汐货场', mark: '03', color: '#fe7ac4' },
-];
+import { bridgeAt, landmarks, interiorAt } from './city-layout.js';
+
+const districtNames = {
+  wetland: { name: '牛田洋', mark: '01', color: '#a9e69e' },
+  oldTown: { name: '北岸老城', mark: '02', color: '#f7ce7c' },
+  docks: { name: '北岸货场', mark: '03', color: '#fe7ac4' },
+  east: { name: '东海岸', mark: '04', color: '#6affde' },
+  south: { name: '礐石南岸', mark: '05', color: '#a9e69e' },
+};
 export function districtAt(x, z) {
-  return x < -114 ? districts[0] : x > 80 && z < -16 ? districts[2] : districts[1];
+  const room = interiorAt(x, z);
+  if (room) return { name: room.name, mark: '内', color: '#ffe4af' };
+  const bridge = bridgeAt(x, z);
+  if (bridge) return { name: bridge.name, mark: '桥', color: '#c4baff' };
+  if (z > 233) return districtNames.south;
+  if (x < -184) return districtNames.wetland;
+  if (x > 208) return districtNames.east;
+  if (x > 80 && z < -16) return districtNames.docks;
+  if (z > 143 && x > 14 && x < 70) return { ...districtNames.oldTown, name: landmarks[1].name };
+  return districtNames.oldTown;
 }

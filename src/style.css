@@ -101,7 +101,7 @@ a {
   pointer-events: none;
 }
 .lobby:before {
-  background: url('/media/harbor.webp') 47% 53% / cover no-repeat;
+  background: url('/media/shantou-bay.webp') 47% 53% / cover no-repeat;
 }
 .lobby:after {
   background:
@@ -1510,4 +1510,13 @@ a {
   border: 1px solid #fff7;
   border-radius: 50%;
   margin-right: 5px;
+}
+
+.landmarks .tile > b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.landmarks .tile > b .icon {
+  color: currentColor;
 }

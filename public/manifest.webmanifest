@@ -1,8 +1,8 @@
 {
-  "name": "给他爱6 · GTA6",
-  "short_name": "给他爱6",
+  "name": "GTA6-S城风云",
+  "short_name": "S城风云",
   "lang": "zh-CN",
-  "description": "沿着霓虹海岸，在浏览器中体验原创潮汐市。",
+  "description": "开车探索汕头风格的内海湾和两岸街区。",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

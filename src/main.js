@@ -1,6 +1,7 @@
+import { landmarks } from './city-layout.js';
 import './style.css';
 import { audioSystem } from './audio.js';
-import { cars, days, districts, packs, paints, weapons } from './data.js';
+import { cars, days, packs, paints, weapons } from './data.js';
 import { icons } from './icons.js';
 import { drawMap } from './map.js';
 import {
@@ -132,7 +133,7 @@ function rotationState() {
         Math.min(screen.width, screen.height) >= 700;
       $('#rotation-title').textContent = tablet ? '请旋转平板方向游玩' : '请旋转手机方向游玩';
       $('#rotation-note').textContent =
-        width > height ? '当前窗口太窄。退出分屏或扩大窗口后继续。' : '把设备横过来即可进入潮汐市。';
+        width > height ? '当前窗口太窄。退出分屏或扩大窗口后继续。' : '把设备横过来即可进入S城。';
     }
   }
   lobby.inert = next;
@@ -173,20 +174,20 @@ const panelTitles = {
   pass: '夜班通行证',
   garage: '晚钟车库',
   armory: '武器商店',
-  districts: '潮汐市街区',
+  districts: 'S城街区',
   help: '操作说明',
   notice: '港务广播',
   settings: '设置',
   credits: '素材与致谢',
   more: '更多港区服务',
   pause: '游戏已暂停',
-  map: '潮汐市地图',
-  loading: '正在进入潮汐市',
+  map: 'S城地图',
+  loading: '正在进入S城',
   error: '游戏暂时无法进入',
   mission: '夜班急件 · 已交付',
   race: '海堤计时赛 · 完赛',
   fail: '本次行动中断',
-  hospital: '潮汐市医院',
+  hospital: 'S城医院',
   context: '画面连接中断',
 };
 
@@ -202,10 +203,8 @@ function open(name, data = {}, keepFocus = false) {
   if (!panel.open && !keepFocus) lastFocus = document.activeElement;
   if (!play.hidden && game) game.pause(true);
   $('#panel-kicker').textContent =
-    name === 'profile' || name === 'register' || name === 'confirm-pack'
-      ? '本机演示'
-      : '给他爱6 · GTA6';
-  $('#panel-title').textContent = panelTitles[name] || '潮汐市';
+    name === 'profile' || name === 'register' || name === 'confirm-pack' ? '本机演示' : 'GTA6-S城风云';
+  $('#panel-title').textContent = panelTitles[name] || 'S城';
   renderPanel(name, data);
   if (!panel.open) {
     panel.showModal();
@@ -215,6 +214,30 @@ function open(name, data = {}, keepFocus = false) {
 const go = (name) => 'data-open="' + name + '"';
 const command = (name) => 'data-action="' + name + '"';
 const primary = 'hot';
+
+function landmarkMap() {
+  return (
+    '<canvas class="map-full" width="520" height="520" aria-label="S城地标地图"></canvas>' +
+    '<div class="activity-grid landmarks">' +
+    landmarks
+      .map(
+        ({ id, name, description, color, icon: mark }) =>
+          '<article class="tile"><b style="color:' +
+          color +
+          '">' +
+          icon(mark) +
+          ' ' +
+          name +
+          '</b><small>' +
+          description +
+          '</small>' +
+          button('导航到' + name, command('navigate') + ' data-id="' + id + '"') +
+          '</article>',
+      )
+      .join('') +
+    '</div>'
+  );
+}
 
 function renderPanel(name, data) {
   const rows = {
@@ -484,20 +507,8 @@ function renderPanel(name, data) {
         button('体验抢车与消星', 'data-start="chase"', primary) +
         '</div></div><div class="tile"><b>维修街对峙</b><small>盐线与锈锚在维修街碰面。靠近后可观察事件。</small><div class="actions">' +
         button('前往帮派事件', 'data-start="gang"', primary) +
-        '</div></div></div><canvas class="map-full" width="450" height="450" aria-label="潮汐市全图"></canvas><div class="row-grid">' +
-        districts
-          .map(
-            (district, index) =>
-              '<div class="tile"><b style="color:' +
-              district.color +
-              '">' +
-              district.name +
-              '</b><small>' +
-              ['海堤、棕榈与计时赛', '晚钟车库、训练区与街区事件', '集装箱、岗亭与警戒区'][index] +
-              '</small></div>',
-          )
-          .join('') +
-        '</div>'
+        '</div></div></div>' +
+        landmarkMap()
       );
     },
     help() {
@@ -585,8 +596,9 @@ function renderPanel(name, data) {
     },
     map() {
       return (
-        '<canvas class="map-full" width="450" height="450" aria-label="潮汐市全图"></canvas><p>青色箭头为当前位置。金色虚线为当前目标路线。</p>' +
-        button('继续游戏', command('resume'), primary)
+        '<p>青色箭头是当前位置，金色虚线是导航路线。</p>' +
+        button('继续游戏', command('resume'), primary) +
+        landmarkMap()
       );
     },
     loading() {
@@ -679,7 +691,7 @@ function renderPanel(name, data) {
   }
 }
 
-async function launch(mode) {
+async function launch(mode, landmarkId) {
   if (blocked || loading) return;
   audio.unlock();
   loading = true;
@@ -717,6 +729,7 @@ async function launch(mode) {
     view = '';
     panel.close();
     game.launch(mode);
+    if (landmarkId) game.navigate(landmarkId);
     rotationState();
     if (blocked) game.view(false);
   } catch (error) {
@@ -864,6 +877,12 @@ document.addEventListener('click', (event) => {
   else if (destination) {
     audio.cue('click');
     open(destination, { id });
+  } else if (action === 'navigate') {
+    if (play.hidden) void launch('free', id);
+    else {
+      game?.navigate(id);
+      closePanel();
+    }
   } else if (action) applyAction(action, id);
   else if (gameAction) game?.action(gameAction);
   else if (control.hasAttribute('data-panel-close')) dismissPanel();
