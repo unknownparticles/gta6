@@ -32,6 +32,8 @@ export function addShantouScenery(scene, { box, batch, block, random }) {
       color,
       yaw,
       pitch,
+      0,
+      'YXZ',
     );
   };
 
@@ -114,11 +116,10 @@ export function addShantouScenery(scene, { box, batch, block, random }) {
               const anchor = z + direction * run;
               segment(
                 [px, deck + towerHeight - 1.4, z],
-                [x + side * (width / 2 - 0.4), bridgeHeight(bridge, anchor) + 0.5, anchor],
-                0.12,
-                0.12,
-                0xecc8aa,
-                'glow',
+                [x + side * (width / 2 - 0.23), bridgeHeight(bridge, anchor) + 0.65, anchor],
+                0.16,
+                0.16,
+                0xc8b2a7,
               );
             }
         }

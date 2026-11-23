@@ -231,12 +231,12 @@ export function makeCity(scene) {
   const { PI } = Math;
   const dummy = new T.Object3D();
   const meshGroups = [];
-  function batch(kind, mode, x, y, z, w, h, d, color, yaw = 0, pitch = 0, roll = 0) {
+  function batch(kind, mode, x, y, z, w, h, d, color, yaw = 0, pitch = 0, roll = 0, order = 'XYZ') {
     const [cx, cz] = [Math.floor(x / 95), Math.floor(z / 95)];
     const key = [kind, mode, cx, cz].join('/');
     if (!bins.has(key)) bins.set(key, { kind, mode, items: [] });
     dummy.position.set(x, y, z);
-    dummy.rotation.set(pitch, yaw, roll);
+    dummy.rotation.set(pitch, yaw, roll, order);
     dummy.scale.set(w, h, d);
     dummy.updateMatrix();
     bins.get(key).items.push([dummy.matrix.clone(), color]);
