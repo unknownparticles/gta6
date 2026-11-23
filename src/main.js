@@ -3,7 +3,16 @@ import { audioSystem } from './audio.js';
 import { cars, days, districts, packs, paints, weapons } from './data.js';
 import { icons } from './icons.js';
 import { drawMap } from './map.js';
-import { buyPaint, claimDay, claimPack, loadSave, localDate } from './save.js';
+import {
+  buyAmmo,
+  buyPaint,
+  buyWeapon,
+  claimDay,
+  claimPack,
+  hasWeapon,
+  loadSave,
+  localDate,
+} from './save.js';
 
 const $ = (selector) => document.querySelector(selector);
 const lobby = $('#lobby');
@@ -134,7 +143,8 @@ function rotationState() {
     if (!play.hidden) {
       game?.view(!next);
       if (!next && !loading && game) {
-        if (['fail', 'mission', 'race', 'context'].includes(view)) open(view, details, true);
+        if (['fail', 'hospital', 'mission', 'race', 'context'].includes(view))
+          open(view, details, true);
         else open('pause', {}, true);
       }
     } else if (!next && view) {
@@ -162,7 +172,7 @@ const panelTitles = {
   sign: '七日签到',
   pass: '夜班通行证',
   garage: '晚钟车库',
-  armory: '武器与训练',
+  armory: '武器商店',
   districts: '潮汐市街区',
   help: '操作说明',
   notice: '港务广播',
@@ -176,10 +186,16 @@ const panelTitles = {
   mission: '夜班急件 · 已交付',
   race: '海堤计时赛 · 完赛',
   fail: '本次行动中断',
+  hospital: '潮汐市医院',
   context: '画面连接中断',
 };
 
 function open(name, data = {}, keepFocus = false) {
+  if (name === 'hospital') {
+    clearTimeout(toastTimer);
+    $('#toast').hidden = true;
+    panel.querySelector('.panel-toast')?.remove();
+  }
   view = name;
   details = data;
   if (blocked) return;
@@ -412,28 +428,53 @@ function renderPanel(name, data) {
       );
     },
     armory() {
+      const cards = weapons
+        .map((weapon, index) => {
+          const owned = hasWeapon(save, index);
+          const { ammo, stock } = save.arsenal[index];
+          const option = ' data-id="' + index + '"';
+          const price = save.perks ? '使用补给券' : '补给弹药 · ' + weapon.ammoPrice + ' 潮票';
+          return (
+            '<article class="tile">' +
+            icon('target') +
+            '<b>' +
+            weapon.name +
+            '</b><small>弹匣上限 ' +
+            weapon.cap +
+            ' 发</small>' +
+            (owned
+              ? '<small>当前弹匣 ' +
+                ammo +
+                ' 发 · 备用 ' +
+                stock +
+                ' 发</small>' +
+                button(
+                  price,
+                  command('buy-ammo') + option,
+                  '',
+                  stock >= weapon.stock * 3 || (!save.perks && save.coins < weapon.ammoPrice),
+                )
+              : button(
+                  '购买 · ' + weapon.price + ' 潮票',
+                  command('buy-weapon') + option,
+                  primary,
+                  save.coins < weapon.price,
+                )) +
+            '</article>'
+          );
+        })
+        .join('');
       return (
-        '<div class="row-grid">' +
-        weapons
-          .map(
-            (weapon, index) =>
-              '<article class="tile">' +
-              icon('target') +
-              '<b>' +
-              weapon.name +
-              '</b><small>弹匣 ' +
-              weapon.cap +
-              ' 发</small><small>' +
-              (save.trained || (index === 0 && save.pistol)
-                ? '已解锁'
-                : index
-                  ? '击中三个靶牌后解锁'
-                  : '在训练场领取') +
-              '</small></article>',
-          )
-          .join('') +
-        '</div><p>击中三个靶牌可解锁脉冲发射器。训练场也可补充弹药和耐久。</p><div class="actions">' +
-        button('前往训练场', 'data-start="training"', primary) +
+        '<p class="wallet-panel">钱包 <b>' +
+        save.coins +
+        ' 潮票</b> · 补给券 ' +
+        save.perks +
+        ' 张</p><div class="activity-grid">' +
+        cards +
+        '</div><p>购买的武器附带弹药。也可在训练场领取手枪，命中三个靶牌解锁脉冲发射器。</p><div class="actions">' +
+        (play.hidden
+          ? button('前往训练场', 'data-start="training"', primary)
+          : button('继续游玩', command('resume'), primary)) +
         '</div>'
       );
     },
@@ -569,7 +610,9 @@ function renderPanel(name, data) {
         data.retries +
         ' 次</b></div><div class="tile earned"><small>车库</small><b>' +
         (data.first ? '双门车已解锁' : '双门车已在车库') +
-        '</b></div></div><div class="actions">' +
+        '</b></div></div><p class="wallet-panel">任务报酬 <b>+' +
+        data.reward +
+        ' 潮票</b></p><div class="actions">' +
         button('继续自由驾驶', command('resume'), primary) +
         button('重玩任务', 'data-start="mission"') +
         button('查看车库', go('garage')) +
@@ -582,7 +625,9 @@ function renderPanel(name, data) {
         displayTime(data.elapsed) +
         '</b><small>' +
         (data.best ? '刷新个人最佳' : '个人最佳 ' + displayTime(save.best)) +
-        '</small></div><div class="actions">' +
+        '</small><small>比赛奖金 +' +
+        data.reward +
+        ' 潮票</small></div><div class="actions">' +
         button('再跑一次', 'data-start="race"', primary) +
         button('返回巡游', command('resume')) +
         '</div>'
@@ -599,6 +644,18 @@ function renderPanel(name, data) {
           primary,
         ) +
         button('返回大厅', command('lobby')) +
+        '</div>'
+      );
+    },
+    hospital() {
+      return (
+        '<div class="tile hospital-receipt"><strong>' +
+        text(data.reason) +
+        '</strong><span>失去全部现金 <b>' +
+        text(data.lost) +
+        ' 潮票</b></span>' +
+        '<span>生命值已恢复 · 当前钱包 0 潮票</span></div><div class="actions">' +
+        button('出院继续游玩', command('discharge'), primary) +
         '</div>'
       );
     },
@@ -734,6 +791,21 @@ function applyAction(action, id) {
         toast('已兑换 ' + paints[id].name);
       }
       break;
+    case 'buy-weapon':
+    case 'buy-ammo': {
+      const index = Number(id);
+      const acquired = action === 'buy-weapon' ? buyWeapon(save, index) : buyAmmo(save, index);
+      if (acquired) {
+        write();
+        open('armory');
+        toast(weapons[index].name + (action === 'buy-weapon' ? '已收入装备' : '弹药已补充'));
+      }
+      break;
+    }
+    case 'discharge':
+      closePanel(false);
+      game?.discharge();
+      break;
     case 'resume':
       closePanel();
       audio.unlock();
@@ -755,7 +827,8 @@ function applyAction(action, id) {
 
 function dismissPanel() {
   if (loading) return;
-  if (view === 'fail') applyAction('retry');
+  if (view === 'hospital') applyAction('discharge');
+  else if (view === 'fail') applyAction('retry');
   else closePanel();
 }
 

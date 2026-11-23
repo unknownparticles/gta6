@@ -786,6 +786,35 @@ a {
 .hud-location small {
   display: block;
 }
+.hud-wallet {
+  position: absolute;
+  top: max(71px, calc(env(safe-area-inset-top) + 59px));
+  left: max(12px, env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 7px;
+  border: 1px solid #ab7ea77f;
+  border-radius: 5px;
+  background: #170c2bee;
+  color: #e9d2ee;
+  font-size: 0.71rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.hud-wallet b,
+.wallet-panel b {
+  color: var(--gold);
+}
+.hospital-receipt {
+  border-color: #83decb;
+}
+.hospital-receipt b {
+  color: var(--gold);
+}
+.play.touch-mode .hud-wallet {
+  top: max(49px, calc(env(safe-area-inset-top) + 37px));
+}
 .hud-location small {
   font: 750 0.59rem monospace;
   letter-spacing: 0.12em;
@@ -898,6 +927,10 @@ a {
   font-weight: 800;
   font-size: 0.69rem;
 }
+.drive-hud #drive-status {
+  display: block;
+  color: #f4d1ad;
+}
 .drive-hud b {
   color: var(--gold);
   font-size: 1.05rem;
@@ -958,6 +991,9 @@ a {
   inset: 0;
   pointer-events: none;
   box-shadow: inset 0 0 130px #12082178;
+}
+.game-gloss.hurt {
+  box-shadow: inset 0 0 105px #b62e508f;
 }
 .crosshair {
   position: absolute;
@@ -1055,7 +1091,7 @@ a {
   display: flex;
 }
 .play.touch-mode .minimap {
-  top: 76px;
+  top: max(82px, calc(env(safe-area-inset-top) + 70px));
   bottom: auto;
 }
 .play.touch-mode .minimap canvas {

@@ -1,4 +1,4 @@
-import { cars, days, packs, paints } from './data.js';
+import { cars, days, packs, paints, weapons } from './data.js';
 
 const key = 'tideline-drive-v1';
 const initial = () => ({
@@ -16,6 +16,9 @@ const initial = () => ({
   done: false,
   pistol: false,
   trained: false,
+  pulse: false,
+  arsenal: [],
+  hospitalLoss: null,
   best: null,
   meters: 0,
   settings: { music: 0.36, effects: 0.6, graphics: 'auto', movement: true },
@@ -36,9 +39,11 @@ export function loadSave(storage) {
       if (!save.owned.includes(save.car) || !cars[save.car]) save.car = 'sedan';
       if (!save.paint || typeof save.paint !== 'object') save.paint = {};
     }
+    normalizeArsenal(save);
     storage.setItem(key, JSON.stringify(save));
   } catch {
     available = false;
+    normalizeArsenal(save);
   }
   return {
     data: save,
@@ -56,6 +61,54 @@ export function loadSave(storage) {
       }
     },
   };
+}
+
+function normalizeArsenal(save) {
+  const previous = Array.isArray(save.arsenal) ? save.arsenal : [];
+  save.arsenal = weapons.map((weapon, index) => {
+    const entry = previous[index];
+    const valid = (count, max) =>
+      Number.isFinite(count) ? Math.max(0, Math.min(max, Math.floor(count))) : 0;
+    return entry
+      ? { ammo: valid(entry.ammo, weapon.cap), stock: valid(entry.stock, weapon.stock * 3) }
+      : {
+          ammo: hasWeapon(save, index) ? weapon.cap : 0,
+          stock: hasWeapon(save, index) ? weapon.stock : 0,
+        };
+  });
+}
+
+export function hasWeapon(save, index) {
+  return index === 0
+    ? Boolean(save.pistol || save.trained)
+    : index === 1 && Boolean(save.pulse || save.trained);
+}
+
+export function grantWeapon(save, index) {
+  const weapon = weapons[index];
+  if (!weapon || hasWeapon(save, index)) return false;
+  save[index ? 'pulse' : 'pistol'] = true;
+  Object.assign(save.arsenal[index], { ammo: weapon.cap, stock: weapon.stock });
+  return true;
+}
+
+export function buyWeapon(save, index) {
+  const weapon = weapons[index];
+  if (!weapon || save.coins < weapon.price || !grantWeapon(save, index)) return false;
+  save.coins -= weapon.price;
+  return true;
+}
+
+export function buyAmmo(save, index) {
+  const weapon = weapons[index];
+  if (!weapon || !hasWeapon(save, index) || (!save.perks && save.coins < weapon.ammoPrice))
+    return false;
+  const inventory = save.arsenal[index];
+  if (inventory.stock >= weapon.stock * 3) return false;
+  inventory.stock = Math.min(weapon.stock * 3, inventory.stock + weapon.stock);
+  if (save.perks) save.perks--;
+  else save.coins -= weapon.ammoPrice;
+  return true;
 }
 
 export function localDate(now = new Date()) {

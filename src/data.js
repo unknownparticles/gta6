@@ -7,6 +7,7 @@ export const cars = {
     power: 10,
     turn: 1.72,
     size: 1.1,
+    mass: 1.35,
   },
   van: {
     name: '港务厢式车',
@@ -16,6 +17,7 @@ export const cars = {
     power: 7,
     turn: 1.22,
     size: 1.25,
+    mass: 2.05,
   },
   coupe: {
     name: '晚潮双门车',
@@ -25,6 +27,7 @@ export const cars = {
     power: 14,
     turn: 2,
     size: 1.1,
+    mass: 1.15,
   },
 };
 export const paints = {
@@ -35,8 +38,28 @@ export const paints = {
   chrome: { name: '七日镀铬', color: '#d2dafe', price: null },
 };
 export const weapons = [
-  { name: '电弧手枪', cap: 8, stock: 40, damage: 40, interval: 0.28, reload: 1.05, color: 0x64fff0 },
-  { name: '脉冲发射器', cap: 14, stock: 70, damage: 21, interval: 0.13, reload: 1.45, color: 0xff65c9 },
+  {
+    name: '电弧手枪',
+    cap: 8,
+    stock: 40,
+    price: 120,
+    ammoPrice: 35,
+    damage: 40,
+    interval: 0.28,
+    reload: 1.05,
+    color: 0x64fff0,
+  },
+  {
+    name: '脉冲发射器',
+    cap: 14,
+    stock: 70,
+    price: 430,
+    ammoPrice: 55,
+    damage: 21,
+    interval: 0.13,
+    reload: 1.45,
+    color: 0xff65c9,
+  },
 ];
 export const packs = [
   { name: '首次假充', parody: '6', coins: 180, paint: 'gold', slogan: '镀金很亮，身份很贵' },
@@ -58,6 +81,7 @@ export const zones = {
   car: [-8, 92],
   van: [12, 97],
   training: [19, 86],
+  hospital: [47, 50],
   check: [72, -18],
   raid: [112, -80],
   delivery: [-6, 96],

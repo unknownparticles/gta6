@@ -475,6 +475,13 @@ export function makeCity(scene) {
   box(18.4, 0.035, 24, 28, 0.058, 24, 0x625569);
   building(41, 19, 16, 14, 12, true);
   building(44, 103, 15, 10, 14, true);
+  box(47, 5, 36, 21, 10, 13, 0x66648b);
+  box(47, 2.6, 42.54, 8, 4.6, 0.14, 0x2c3758);
+  box(47, 4.9, 43.1, 13, 0.27, 2.9, 0x79eed6, 'glow');
+  box(47, 0.035, 50, 19, 0.08, 13, 0x70576d);
+  box(54.4, 7.4, 42.6, 1.6, 0.45, 0.12, 0x8dfbe4, 'glow');
+  box(54.4, 7.4, 42.6, 0.45, 1.6, 0.12, 0x8dfbe4, 'glow');
+  block(47, 36, 21, 13);
   if (asset('kiosk', 84, -15, 5, 4, 4.5)) block(84, -15, 5, 4.5);
   else building(84, -15, 5, 4, 4.5);
   for (const x of [84, 90, 95]) asset('barrier', x, -23.5, 3, 1, 1);
@@ -526,6 +533,7 @@ export function makeCity(scene) {
     ['潮汐货场', 106, 7, -33, 0, '#ffd09b'],
     ['滨海大道', -170, 5, 125, PI / 2, '#8affe2'],
     ['夜班维修街', 39, 4.3, 31, 0, '#ffa4d5'],
+    ['潮汐市医院', 47, 7.4, 42.6, 0, '#8dfbe4'],
   ]) {
     const sign = new T.Mesh(new T.PlaneGeometry(8.5, 2.12), signMaterial(label, color));
     sign.position.set(x, y, z);

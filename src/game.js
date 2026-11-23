@@ -1,8 +1,10 @@
 import * as T from 'three';
 import { cars, districtAt, paints, raceRoute, roads, weapons, zones } from './data.js';
+import { drive, pedestrianContact, vehicleContact } from './driving.js';
 import { createInput } from './input.js';
 import { distance, direction, drawMap, inHarbor, routeTo } from './map.js';
 import { addHeat, advanceSearch, freshAlert } from './wanted.js';
+import { grantWeapon, hasWeapon } from './save.js';
 import { loadModels, makeCity, personModel, vehicleModel } from './world.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -10,6 +12,7 @@ const angle = (value) => Math.atan2(Math.sin(value), Math.cos(value));
 const now = () => performance.now();
 const clockText = (value) => value.toFixed(2) + ' 秒';
 const forward = (yaw) => [-Math.sin(yaw), -Math.cos(yaw)];
+const patrolSpec = { ...cars.sedan, mass: 1.7 };
 const patrolOrigins = [
   [149, -142],
   [72, -82],
@@ -276,6 +279,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   let eventTime = 0;
   let moving = 0;
   let lastCrash = 0;
+  let lastVehicleImpact = '';
+  let lastPedestrianImpact = 0;
   let lastMap = 0;
   let mapState = {};
   let recoverPressed = 0;
@@ -298,6 +303,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     aiming: false,
     punch: 0,
     hit: 0,
+    hurt: 0,
+    impactUntil: 0,
     cooldown: 0,
     reload: 0,
     inventory: [],
@@ -325,7 +332,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     object.group.rotation.y = object.yaw;
     if (object.lights?.length)
       object.lights.forEach((light, i) => {
-        light.visible = Math.floor(time * 8) % 2 === i;
+        light.visible = object.hp > 0 && Math.floor(time * 8) % 2 === i;
       });
   }
 
@@ -342,9 +349,17 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       safe: point,
     };
     owned.push(object);
+    resetCarMotion(object);
     scene.add(object.group);
     syncMesh(object);
     return object;
+  }
+
+  function resetCarMotion(car) {
+    car.vx = car.vz = car.kickX = car.kickZ = car.steer = 0;
+    car.driveInput = car.reverseWait = 0;
+    car.travelYaw = car.yaw;
+    car.impactUntil = 0;
   }
 
   function removeVehicles() {
@@ -388,11 +403,15 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     practice = false;
     eventTime = 0;
     player.hp = 100;
-    player.gear = save.pistol || save.trained ? 0 : -1;
+    player.gear = weapons.findIndex((_, index) => hasWeapon(save, index));
     player.aiming = false;
     player.reload = player.cooldown = player.punch = player.hit = 0;
+    player.hurt = player.impactUntil = 0;
+    lastCrash = 0;
+    lastVehicleImpact = '';
+    lastPedestrianImpact = 0;
     shotReport = 0;
-    player.inventory = weapons.map((weapon) => ({ ammo: weapon.cap, stock: weapon.stock }));
+    player.inventory = save.arsenal;
     for (const target of targets) {
       target.hit = false;
       target.plate.material.color.setHex(0xffa259);
@@ -401,6 +420,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       [p.x, p.z] = p.home;
       p.flee = p.angry = p.wait = 0;
       p.health = 100;
+      p.impactUntil = 0;
     }
     clearAlert();
     removeVehicles();
@@ -413,6 +433,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       car.speed = car.driverTimer = 0;
       car.safe = start;
       car.stolen = false;
+      resetCarMotion(car);
       car.driver.group.visible = false;
       syncMesh(car);
     }
@@ -429,7 +450,9 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
             ? [zones.gang[0], zones.gang[1] + 6]
             : mode === 'chase'
               ? [streetCarPoint[0], streetCarPoint[1] + 3.7]
-              : zones.spawn;
+              : mode === 'hospital'
+                ? zones.hospital
+                : zones.spawn;
       [player.x, player.z] = spawn;
     }
     player.yaw = cameraYaw = 0;
@@ -462,6 +485,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     player.yaw = cameraYaw = car.yaw;
     player.aiming = false;
     player.reload = 0;
+    car.travelYaw = car.yaw;
+    car.steer = car.driveInput = car.reverseWait = 0;
     if (!car.stolen && car.type === 'van' && !save.owned.includes('van')) {
       save.owned.push('van');
       store.write();
@@ -579,7 +604,16 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
           run: startTraining,
         };
       }
-      return { text: '补给弹药', run: replenish };
+      return { text: '打开武器商店', run: () => callbacks.panel('armory') };
+    }
+    if (!vehicle && within(zones.hospital, 7) && player.hp < 100 && !alert.level) {
+      return {
+        text: '接受治疗',
+        run: () => {
+          player.hp = 100;
+          callbacks.toast('生命值已恢复');
+        },
+      };
     }
     if (within(zones.gang, 8) && !mission && eventTime <= 0 && !alert.level) {
       return {
@@ -602,16 +636,17 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   function completeMission() {
     const { elapsed, retries } = mission;
     const first = !save.done;
+    const reward = first ? 240 : 160;
     mission = null;
     if (first) {
       save.done = true;
       if (!save.owned.includes('coupe')) save.owned.push('coupe');
-      save.coins += 240;
-      store.write();
     }
+    save.coins += reward;
+    store.write();
     audio.cue('win');
     setPause(true);
-    callbacks.result('mission', { elapsed, retries, first });
+    callbacks.result('mission', { elapsed, retries, first, reward });
   }
 
   function startRace() {
@@ -627,30 +662,15 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       target.hit = false;
       target.plate.material.color.setHex(0xffa259);
     }
-    save.pistol = true;
+    grantWeapon(save, 0);
+    if (player.inventory[0].ammo + player.inventory[0].stock < 3) {
+      player.inventory[0].ammo = weapons[0].cap;
+    }
     store.write();
     player.gear = 0;
     player.yaw = cameraYaw = 0;
     cameraPitch = 0.065;
-    replenish();
     callbacks.toast('训练开始 · 瞄准并命中三个靶牌');
-  }
-
-  function replenish() {
-    if (player.gear < 0) player.gear = 0;
-    player.inventory = weapons.map((weapon) => ({ ammo: weapon.cap, stock: weapon.stock }));
-    player.reload = 0;
-    player.hp = 100;
-    if (save.perks > 0) {
-      save.perks--;
-      player.inventory.forEach((entry, index) => {
-        entry.stock += weapons[index].cap;
-      });
-      store.write();
-      callbacks.toast('已使用签到补给券 · 获得额外弹药');
-    } else {
-      callbacks.toast('弹药与耐久已补满');
-    }
   }
 
   function reload() {
@@ -671,9 +691,12 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       practice = false;
       audio.cue('win');
       if (!save.trained) {
+        const unlocked = grantWeapon(save, 1);
         save.trained = true;
         store.write();
-        callbacks.toast('训练完成 · 已解锁脉冲发射器，按 Q 切换');
+        callbacks.toast(
+          unlocked ? '训练完成 · 已解锁脉冲发射器，按 Q 切换' : '训练完成 · 三个靶牌都已命中',
+        );
       } else {
         callbacks.toast('训练完成 · 三个靶牌都已命中');
       }
@@ -752,10 +775,22 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     const weapon = weapons[player.gear];
     const inv = player.inventory[player.gear];
     if (inv.ammo <= 0) {
+      if (
+        practice &&
+        player.gear === 0 &&
+        inv.stock === 0 &&
+        distance(player.x, player.z, zones.training) <= 8
+      ) {
+        inv.ammo = weapons[0].cap;
+        store.write();
+        callbacks.toast('训练场补充了一匣电弧弹');
+        return;
+      }
       reload();
       return;
     }
     inv.ammo--;
+    store.write();
     player.cooldown = weapon.interval;
     player.yaw = cameraYaw;
     audio.cue('shot');
@@ -840,6 +875,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       hp: 92,
       disabled: 0,
     };
+    resetCarMotion(patrol);
     model.group.visible = true;
     syncMesh(patrol);
     alert.patrols.push(patrol);
@@ -857,6 +893,30 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       mission: Boolean(mission),
       checkpoint: Boolean(mission?.checkpoint),
     });
+  }
+
+  function damagePlayer(amount, reason) {
+    if (paused || player.hp <= 0) return;
+    player.hp = Math.max(0, player.hp - amount);
+    player.hurt = 0.3;
+    if (player.hp > 0) return;
+
+    save.hospitalLoss = save.coins;
+    save.coins = 0;
+    store.write();
+    arriveHospital(reason);
+  }
+
+  function arriveHospital(reason = '角色死亡') {
+    setup('hospital');
+    setPause(true);
+    playerModel.group.visible = true;
+    playerModel.group.position.set(player.x, 0.035, player.z);
+    playerModel.group.rotation.y = player.yaw;
+    playerModel.walk(time, 0);
+    updateCamera(0, true);
+    renderer.render(scene, camera);
+    callbacks.result('hospital', { reason, lost: save.hospitalLoss });
   }
 
   function retry() {
@@ -972,6 +1032,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
         if (patrol.disabled === 0) {
           [patrol.x, patrol.z] = patrol.origin;
           patrol.hp = 92;
+          resetCarMotion(patrol);
         }
         continue;
       }
@@ -993,9 +1054,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
         destination = route.find((p) => distance(patrol.x, patrol.z, p) > 3) || destination;
       }
       const range = distance(patrol.x, patrol.z, destination);
-      const speed = alert.left > 0 ? 9 : 14 + alert.level * 1.8;
-      if (range > 3.1) npcDrive(patrol, destination, Math.min(speed, range * 1.9), dt);
-      else syncMesh(patrol);
+      const speed = alert.left > 0 ? 9 : alert.level === 1 ? 12.5 : 14 + alert.level * 1.8;
+      npcDrive(patrol, destination, range > 3 ? Math.min(speed, range * 2.15) : 0, dt);
     }
     if (close && (!vehicle || Math.abs(vehicle.speed) < 5.5)) {
       alert.caught += dt * (!vehicle && moving > 5.5 ? 0.35 : 1);
@@ -1005,22 +1065,175 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     }
   }
 
+  function carSpec(car) {
+    return cars[car.type] || patrolSpec;
+  }
+
+  function clearCar(car, x, z) {
+    const { size } = carSpec(car);
+    const [fx, fz] = forward(car.yaw);
+    return (
+      city.clear(x, z, size) &&
+      city.clear(x + fx * 1.25, z + fz * 1.25, size) &&
+      city.clear(x - fx * 1.25, z - fz * 1.25, size)
+    );
+  }
+
+  function moveCar(car, vx, vz, dt) {
+    const dx = (vx + car.kickX) * dt;
+    const dz = (vz + car.kickZ) * dt;
+    const x = car.x + dx;
+    const z = car.z + dz;
+    car.kickX *= Math.exp(-3 * dt);
+    car.kickZ *= Math.exp(-3 * dt);
+    if (clearCar(car, x, z)) {
+      car.x = x;
+      car.z = z;
+      car.safe = [x, z];
+      car.vx = dx / dt;
+      car.vz = dz / dt;
+    } else {
+      const approach = Math.hypot(dx, dz) / dt;
+      car.speed *= car === vehicle ? -0.18 : 0.3;
+      car.vx = car.vz = car.kickX = car.kickZ = 0;
+      if (approach > 5 && time >= car.impactUntil) {
+        car.impactUntil = time + 0.65;
+        hitCar(car, approach * 1.13, '撞上路障');
+        if (car === vehicle && approach > 16) damagePlayer((approach - 14) * 2.5, '车祸身亡');
+      }
+    }
+    for (const wheel of car.wheels) wheel.rotateX((-car.speed * dt) / 0.45);
+    syncMesh(car);
+  }
+
+  function hitCar(car, damage, reason) {
+    const previous = car.hp;
+    car.hp = Math.max(0, car.hp - damage / Math.sqrt(carSpec(car).mass));
+    if (previous > 0 && car.hp === 0 && car.lights?.length) car.disabled = 7;
+    if (car === vehicle) {
+      lastVehicleImpact = reason;
+      lastCrash = 1.1;
+      audio.cue('crash');
+      if (save.settings.movement) cameraShake = 0.24;
+      if (previous > 0 && car.hp === 0) callbacks.toast('车辆停驶 · 请下车');
+    }
+  }
+
   function npcDrive(car, target, speed, dt) {
+    if (car.hp <= 0) {
+      moveCar(car, 0, 0, dt);
+      return;
+    }
     const desired = direction(car.x, car.z, target);
     const difference = angle(desired - car.yaw);
     car.yaw += clamp(difference, -2.8 * dt, 2.8 * dt);
     const [fx, fz] = forward(car.yaw);
-    car.speed = Math.abs(difference) > 1.05 ? speed * 0.25 : speed;
-    const step = car.speed * dt;
-    if (city.clear(car.x + fx * step, car.z + fz * step, 1)) {
-      car.x += fx * step;
-      car.z += fz * step;
-    } else {
-      car.yaw += 2.3 * dt;
-      car.speed = 0;
-    }
-    for (const wheel of car.wheels) wheel.rotateX((-car.speed * dt) / 0.45);
+    const goal = Math.abs(difference) > 1.05 ? speed * 0.25 : speed;
+    car.speed += (goal - car.speed) * (1 - Math.exp(-dt * 6.5));
+    moveCar(car, car.speed * fx, car.speed * fz, dt);
+    if (!car.vx && !car.vz && speed > 0) car.yaw += 2.3 * dt;
+  }
+
+  function pushCar(car, dx, dz) {
+    if (!clearCar(car, car.x + dx, car.z + dz)) return;
+    car.x += dx;
+    car.z += dz;
     syncMesh(car);
+  }
+
+  function vehicleCollisions(dt) {
+    const nearby = [...traffic, ...owned, ...alert.patrols].filter(
+      (car) => car.group.visible && distance(car.x, car.z, [player.x, player.z]) < 58,
+    );
+    for (const car of nearby) {
+      if (car !== vehicle && (car.stolen || owned.includes(car) || (!car.route && car.driver))) {
+        moveCar(car, 0, 0, dt);
+      }
+    }
+    for (let i = 0; i < nearby.length; i++) {
+      const a = nearby[i];
+      for (let j = i + 1; j < nearby.length; j++) {
+        const b = nearby[j];
+        if (Math.hypot(a.x - b.x, a.z - b.z) >= 4.9) continue;
+        const first = carSpec(a);
+        const second = carSpec(b);
+        const contact = vehicleContact(a, b, first, second);
+        if (!contact) continue;
+        const { nx, nz, depth, impulse, closing } = contact;
+        const totalMass = first.mass + second.mass;
+        const aPush = (depth * second.mass) / totalMass;
+        const bPush = (depth * first.mass) / totalMass;
+        pushCar(a, -nx * aPush, -nz * aPush);
+        pushCar(b, nx * bPush, nz * bPush);
+        if (closing < 2.6 || (time < a.impactUntil && time < b.impactUntil)) continue;
+        a.kickX -= (nx * impulse) / first.mass;
+        a.kickZ -= (nz * impulse) / first.mass;
+        b.kickX += (nx * impulse) / second.mass;
+        b.kickZ += (nz * impulse) / second.mass;
+        a.speed *= 0.62;
+        b.speed *= 0.62;
+        a.impactUntil = b.impactUntil = time + 0.44;
+        const playerCaused =
+          (vehicle === a && a.vx * nx + a.vz * nz > -(b.vx * nx + b.vz * nz)) ||
+          (vehicle === b && -(b.vx * nx + b.vz * nz) > a.vx * nx + a.vz * nz);
+        const reason = playerCaused ? '车辆碰撞' : '被车辆撞击';
+        hitCar(a, closing * Math.sqrt(second.mass) * 0.9, reason);
+        hitCar(b, closing * Math.sqrt(first.mass) * 0.9, reason);
+        if ((vehicle === a || vehicle === b) && closing > 10) {
+          damagePlayer((closing - 8) * 2.7, '车祸身亡');
+          if (paused) return;
+        }
+      }
+    }
+
+    for (const car of nearby) {
+      const speed = Math.hypot(car.vx, car.vz);
+      if (speed < 2.5) continue;
+      const radius = carSpec(car).size;
+      if (
+        car !== vehicle &&
+        !vehicle &&
+        time >= player.impactUntil &&
+        pedestrianContact(car, player, radius)
+      ) {
+        player.impactUntil = time + 1.25;
+        const x = player.x + (car.vx / speed) * 2.5;
+        const z = player.z + (car.vz / speed) * 2.5;
+        if (city.clear(x, z)) {
+          player.x = x;
+          player.z = z;
+        }
+        damagePlayer(speed * 3.6, '被车辆撞倒');
+        if (paused) return;
+      }
+      for (const person of pedestrians) {
+        if (
+          !person.group.visible ||
+          person.health <= 0 ||
+          time < person.impactUntil ||
+          !pedestrianContact(car, person, radius)
+        )
+          continue;
+        person.impactUntil = time + 1.05;
+        const x = person.x + (car.vx / speed) * 2.1;
+        const z = person.z + (car.vz / speed) * 2.1;
+        if (city.clear(x, z)) {
+          person.x = x;
+          person.z = z;
+        }
+        person.health = Math.max(0, person.health - speed * 5.3);
+        person.flee = 4;
+        if (car === vehicle) {
+          lastPedestrianImpact++;
+          hitCar(car, speed * 0.3, '撞到行人');
+          if (speed > 5) reportOffense(1, '撞到行人');
+        }
+      }
+    }
+    if (vehicle) {
+      player.x = vehicle.x;
+      player.z = vehicle.z;
+    }
   }
 
   function updateTraffic(dt) {
@@ -1045,10 +1258,12 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       const target = car.route[car.index];
       if (distance(car.x, car.z, target) < 4) car.index = (car.index + 1) % car.route.length;
       const [fx, fz] = forward(car.yaw);
+      const dx = player.x - car.x;
+      const dz = player.z - car.z;
+      const ahead = dx * fx + dz * fz;
+      const offset = Math.abs(dx * fz - dz * fx);
       const obstruction =
-        range < 5.2 ||
-        (range < 11 &&
-          distance(car.x + fx * 5, car.z + fz * 5, [player.x, player.z]) < (vehicle ? 3.9 : 2.45));
+        ahead > 0 && ahead < (vehicle ? 5.2 : 4.6) && offset < (vehicle ? 1.75 : 0.85);
       npcDrive(car, car.route[car.index], obstruction ? 0 : 10, range > 200 ? dt * 4 : dt);
     }
   }
@@ -1079,11 +1294,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       if (hostile) {
         if (range <= 12) relation = pedestrian.gang + ' · 敌对';
         if (range < 8 && !vehicle) {
-          player.hp = Math.max(0, player.hp - dt * 10);
-          if (player.hp <= 0) {
-            fail('角色耐久耗尽');
-            return;
-          }
+          damagePlayer(dt * 10, '在帮派冲突中死亡');
+          if (paused) return;
         }
       } else if (pedestrian.gang && range < 8) {
         relation = pedestrian.gang + ' · 观望';
@@ -1118,70 +1330,32 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
 
   function updateDriving(dt) {
     const car = vehicle;
-    const spec = cars[car.type];
-    const gas = held.has('KeyW') || held.has('ArrowUp') || held.has('gas') ? 1 : 0;
-    const brake = held.has('KeyS') || held.has('ArrowDown') || held.has('reverse') ? 1 : 0;
-    const hand = held.has('Space') || held.has('hand');
-    const steer =
-      Number(held.has('KeyA') || held.has('ArrowLeft')) -
-      Number(held.has('KeyD') || held.has('ArrowRight')) -
-      pad.x;
-    const before = car.speed;
-    if (car.hp > 0) {
-      if (gas) car.speed += (car.speed < 0 ? 23 : spec.power) * dt;
-      if (brake) car.speed -= (car.speed > 0.3 ? 26 : spec.power * 0.58) * dt;
-      if (!gas && !brake) car.speed *= Math.exp(-0.85 * dt);
-      if (hand) car.speed *= Math.exp(-3.05 * dt);
-      car.speed = clamp(car.speed, -8, spec.speed);
-      if (Math.abs(car.speed) < 0.11 && !gas && !brake) car.speed = 0;
-    } else {
-      car.speed = 0;
-    }
-    const velocityTurn = Math.min(1, Math.abs(car.speed) / 6.5);
-    car.yaw +=
-      clamp(steer, -1, 1) * (hand ? 1.52 : 1) * spec.turn * velocityTurn * Math.sign(car.speed) * dt;
-    const [fx, fz] = forward(car.yaw);
-    const x = car.x + fx * car.speed * dt;
-    const z = car.z + fz * car.speed * dt;
-    const blocked = [...traffic, ...owned, ...alert.patrols].some(
-      (other) =>
-        other !== car &&
-        other.group.visible &&
-        distance(x, z, [other.x, other.z]) < 2.15 &&
-        distance(car.x, car.z, [other.x, other.z]) > distance(x, z, [other.x, other.z]) + 0.015,
-    );
-    if (
-      !blocked &&
-      city.clear(x, z, spec.size) &&
-      city.clear(x + fx * 1.36, z + fz * 1.36, spec.size) &&
-      city.clear(x - fx * 1.36, z - fz * 1.36, spec.size)
-    ) {
-      const traveled = Math.hypot(car.x - x, car.z - z);
-      car.x = x;
-      car.z = z;
-      car.safe = [x, z];
-      if (traveled > 0) {
-        save.meters += traveled;
-        if (Math.floor(save.meters / 100) !== Math.floor((save.meters - traveled) / 100)) store.write();
-      }
-    } else if (Math.abs(before) > 1.05) {
-      if (lastCrash <= 0 && Math.abs(before) > 4.5) {
-        lastCrash = 0.42;
-        car.hp = Math.max(0, car.hp - Math.abs(before) * (car.type === 'van' ? 0.84 : 1.25));
-        audio.cue('crash');
-        if (save.settings.movement) cameraShake = 0.23;
-        if (car.hp <= 0) callbacks.toast('车辆停驶 · 下车或打开暂停菜单脱困');
-      }
-      car.speed *= -0.27;
-    } else {
-      car.speed = 0;
+    const input = {
+      gas: held.has('KeyW') || held.has('ArrowUp') || held.has('gas'),
+      brake: held.has('KeyS') || held.has('ArrowDown') || held.has('reverse'),
+      handbrake: held.has('Space') || held.has('hand'),
+      steering: clamp(
+        Number(held.has('KeyA') || held.has('ArrowLeft')) -
+          Number(held.has('KeyD') || held.has('ArrowRight')) -
+          pad.x,
+        -1,
+        1,
+      ),
+    };
+    const [vx, vz] = drive(car, carSpec(car), input, dt);
+    const before = [car.x, car.z];
+    moveCar(car, vx, vz, dt);
+    if (paused) return;
+    const traveled = distance(car.x, car.z, before);
+    if (traveled > 0) {
+      const previous = save.meters;
+      save.meters += traveled;
+      if (Math.floor(save.meters / 100) !== Math.floor(previous / 100)) store.write();
     }
     player.x = car.x;
     player.z = car.z;
     player.yaw = car.yaw;
     moving = Math.abs(car.speed);
-    for (const wheel of car.wheels) wheel.rotateX((-car.speed * dt) / 0.45);
-    syncMesh(car);
     if (time - lastCameraInput > 1.1) cameraYaw += angle(car.yaw - cameraYaw) * Math.min(1, dt * 8);
   }
 
@@ -1227,15 +1401,17 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     if (race.index !== raceRoute.length) return;
     const elapsed = race.elapsed;
     const best = save.best == null || elapsed < save.best;
+    const reward = best ? 130 : 90;
     if (best) {
       save.best = elapsed;
-      store.write();
     }
+    save.coins += reward;
+    store.write();
     race = null;
     intro = 'free';
     audio.cue('win');
     setPause(true);
-    callbacks.result('race', { elapsed, best });
+    callbacks.result('race', { elapsed, best, reward });
   }
 
   function destination() {
@@ -1283,6 +1459,9 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     if (intro === 'race') return ['海堤计时赛', '前往海堤起点', '停车后点击交互开始'];
     if (intro === 'training') return ['武器训练', '维修街训练场', '靠近训练场标记并交互'];
     if (intro === 'gang') return ['街区事件', '维修街对峙', '接近标记并交互以观察事件'];
+    if (intro === 'hospital' && distance(player.x, player.z, zones.hospital) < 15) {
+      return ['潮汐市医院', '生命值已恢复', '出院后可继续在城市里活动'];
+    }
     if (intro === 'chase') return ['街头追逐', '抢走标记的街车', '上车后会触发警方通缉'];
     if (relation) return ['街区居民', relation, '远离后，街区会恢复日常活动'];
     if (!vehicle && target)
@@ -1321,12 +1500,18 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     ui['foot-hud'].hidden = Boolean(vehicle);
     ui.crosshair.hidden = Boolean(vehicle) || (player.gear < 0 && !player.hit);
     ui.crosshair.toggleAttribute('data-hit', player.hit > 0);
+    ui['game-gloss'].classList.toggle('hurt', player.hurt > 0);
+    ui['wallet-value'].textContent = String(save.coins);
+    ui['health-value'].textContent = Math.ceil(player.hp) + ' 生命';
     ui['touch-attack'].setAttribute('aria-label', player.gear < 0 ? '出拳' : '开火');
     if (vehicle) {
       ui.speed.textContent = String(Math.round(Math.abs(vehicle.speed) * 3.6));
-      ui.gear.textContent = Math.abs(vehicle.speed) < 0.3 ? 'N' : vehicle.speed < 0 ? 'R' : 'D';
+      ui.gear.textContent =
+        vehicle.hp <= 0 ? '停驶' : Math.abs(vehicle.speed) < 0.3 ? 'N' : vehicle.speed < 0 ? 'R' : 'D';
       ui.condition.style.width = vehicle.hp + '%';
       ui['car-label'].textContent = cars[vehicle.type].name + (vehicle.stolen ? ' · 街车' : '');
+      ui['drive-status'].textContent =
+        lastCrash > 0 ? lastVehicleImpact : '车况 ' + Math.ceil(vehicle.hp) + '%';
     } else {
       ui.vitals.firstElementChild.style.width = player.hp + '%';
       ui['weapon-label'].textContent = weapons[player.gear]?.name || '徒手';
@@ -1345,6 +1530,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
         countdown: alert.left,
         pursuit: alert.patrols.length,
         punch: player.punch,
+        health: player.hp,
+        carHealth: vehicle?.hp ?? null,
+        impact: lastCrash > 0 ? lastVehicleImpact : '',
+        hitPedestrians: lastPedestrianImpact,
         race: race?.index,
         paused,
         fps: frameMean ? 1000 / frameMean : null,
@@ -1411,6 +1600,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     eventTime = Math.max(0, eventTime - dt);
     player.punch = Math.max(0, player.punch - dt);
     player.hit = Math.max(0, player.hit - dt);
+    player.hurt = Math.max(0, player.hurt - dt);
     shotReport = Math.max(0, shotReport - dt);
     beam.visible = beamTime > 0;
     beam.material.opacity = Math.min(1, beamTime * 10);
@@ -1425,6 +1615,12 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     } else {
       updateWalking(dt);
     }
+    if (paused) return;
+    updateTraffic(dt);
+    updateAlert(dt);
+    if (paused) return;
+    vehicleCollisions(dt);
+    if (paused) return;
     playerModel.group.visible = !vehicle;
     playerModel.group.position.set(player.x, 0.035, player.z);
     playerModel.group.rotation.y = player.yaw;
@@ -1434,10 +1630,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       player.gear >= 0 && (pad.aiming || player.aiming || player.cooldown > 0),
       Math.sin((player.punch / 0.3) * Math.PI),
     );
-    updateTraffic(dt);
     updatePedestrians(dt);
-    if (paused) return;
-    updateAlert(dt);
     if (paused) return;
     updateRace(dt);
     if (paused) return;
@@ -1450,6 +1643,7 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
           const loaded = Math.min(weapons[player.gear].cap - inv.ammo, inv.stock);
           inv.ammo += loaded;
           inv.stock -= loaded;
+          store.write();
         }
       }
       if (held.has('fire') || held.has('Enter') || pad.fire) fire();
@@ -1505,8 +1699,9 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       interact();
       updateHud(true);
     } else if (name === 'switch') {
-      if ((save.pistol || save.trained) && !vehicle) {
-        player.gear = player.gear >= (save.trained ? 1 : 0) ? -1 : player.gear + 1;
+      if (!vehicle) {
+        const slots = [-1, ...weapons.map((_, i) => i).filter((i) => hasWeapon(save, i))];
+        player.gear = slots[(slots.indexOf(player.gear) + 1) % slots.length];
         player.reload = 0;
         updateHud(true);
       }
@@ -1536,7 +1731,8 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
   return {
     launch(mode) {
       const started = alive;
-      setup(mode);
+      if (save.hospitalLoss !== null) arriveHospital();
+      else setup(mode);
       if (!started) requestAnimationFrame(animate);
     },
     pause(value = true) {
@@ -1548,6 +1744,12 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
       store.write();
     },
     retry,
+    discharge() {
+      save.hospitalLoss = null;
+      store.write();
+      setPause(false);
+      updateHud(true);
+    },
     recover() {
       setPause(false);
       recover();

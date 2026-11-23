@@ -83,6 +83,7 @@ export function drawMap(canvas, state = {}, detailed = false) {
     for (const [point, label, color] of [
       [zones.garage, '车库', '#f7ce7c'],
       [zones.training, '训练场', '#83f9df'],
+      [zones.hospital, '潮汐市医院', '#a0ffde'],
       [zones.race, '计时赛', '#83f9df'],
       [zones.gang, '街区事件', '#fe7ac4'],
       [[75, -82], '西出口', '#ffda9c'],
