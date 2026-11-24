@@ -1,4 +1,5 @@
 import * as T from 'three';
+import { addCrossings, addHeroLandmarks, crossings } from './real-landmarks.js';
 
 const cells = 240;
 const palette = [
@@ -11,6 +12,10 @@ const arcadePalette = [
 ];
 const landmarks = [
   ['pavilion', '小公园中山纪念亭', '532956287', [-2815, -1426]],
+  ['department-store', '南生百货大楼', '532956292', [-2837, -1390]],
+  ['post-office', '邮政总局旧址', '532956280', [-2797, -1180]],
+  ['tv', '电视塔', '582827032', [-2407, -3708]],
+  ['museum', '潮汕历史文化博览中心', '1077683036', [1440, 2308]],
   ['square', '人民广场', '527201447', [-1861, -1072]],
   ['north-ferry', '广场轮渡站', '527264674', [-1612, -947]],
   ['south-ferry', '礐石轮渡站', '528328082', [-2533, 336]],
@@ -236,11 +241,11 @@ export function createRealCity(scene, data, elevation, materials) {
   }
 
   const bridgeShapes = [];
-  for (const [width, flags, coords] of data.roads) {
+  for (const [baseWidth, flags, coords] of data.roads) {
     const path = pairs(coords);
     const bridge = Boolean(flags & 1);
     const foot = Boolean(flags & 2);
-    const highway = width >= 8 && !foot;
+    const highway = baseWidth >= 8 && !foot;
     for (let index = 1; index < path.length; index++) {
       const [ax, az] = path[index - 1];
       const [bx, bz] = path[index];
@@ -248,7 +253,10 @@ export function createRealCity(scene, data, elevation, materials) {
       const dz = bz - az;
       const length = Math.hypot(dx, dz);
       if (length < 0.15) continue;
-      const segment = { ax, az, bx, bz, dx, dz, length, width, bridge, foot };
+      const crossing =
+        Math.abs(dz) > 0.5 ? crossings.find(({ flag }) => (flags & flag) !== 0) : null;
+      const width = crossing?.roadWidth ?? baseWidth;
+      const segment = { ax, az, bx, bz, dx, dz, length, width, bridge, foot, crossing };
       roads.push(segment);
       const padding = width / 2 + 1.5;
       put(
@@ -260,26 +268,14 @@ export function createRealCity(scene, data, elevation, materials) {
         Math.max(az, bz) + padding,
       );
 
-      const west =
-        Math.max(Math.abs(ax + 3786), Math.abs(bx + 3786)) < 205 &&
-        Math.min(az, bz) > -700 &&
-        Math.max(az, bz) < 1250;
-      const east =
-        Math.min(ax, bx) > 4330 &&
-        Math.max(ax, bx) < 5860 &&
-        Math.min(az, bz) > -95 &&
-        Math.max(az, bz) < 2400;
       const rise = (x, z) => {
-        if (!bridge) return terrain(x, z);
-        if (west)
-          return (
-            35 * T.MathUtils.smoothstep(z, -570, -210) * (1 - T.MathUtils.smoothstep(z, 285, 1150))
-          );
-        if (east)
-          return (
-            37 * T.MathUtils.smoothstep(z, -40, 530) * (1 - T.MathUtils.smoothstep(z, 1440, 2220))
-          );
-        return terrain(x, z) + 0.18;
+        if (crossing) {
+          const [flatStart, flatEnd] = crossing.plateau;
+          const rise = T.MathUtils.smoothstep(z, crossing.start, flatStart);
+          const fall = 1 - T.MathUtils.smoothstep(z, flatEnd, crossing.end);
+          return Math.max(terrain(x, z), crossing.deck * rise * fall);
+        }
+        return terrain(x, z) + (bridge ? 0.18 : 0);
       };
       segment.rise = rise;
       const n = Math.max(1, Math.ceil(length / 16));
@@ -333,7 +329,7 @@ export function createRealCity(scene, data, elevation, materials) {
           }
         }
       }
-      if (bridge && highway && (east || west) && length > 60) bridgeShapes.push(segment);
+      if (crossing) bridgeShapes.push(segment);
     }
   }
 
@@ -544,7 +540,19 @@ export function createRealCity(scene, data, elevation, materials) {
     globe.add(mesh);
   }
   makePavilion(globe, places[0].point, terrain(...places[0].point));
-  addBridgeTowers(globe, bridgeShapes);
+  addCrossings(globe, bridgeShapes);
+  addHeroLandmarks(globe, data, terrain, materials, (rings, bottom, top, landable = true) => {
+    const xs = rings[0].map(([x]) => x);
+    const zs = rings[0].map(([, z]) => z);
+    put(
+      buildingIndex,
+      { rings, bottom, top, landable },
+      Math.min(...xs) - 1.6,
+      Math.min(...zs) - 1.6,
+      Math.max(...xs) + 1.6,
+      Math.max(...zs) + 1.6,
+    );
+  });
 
   function roadAt(x, z, elevatedOnly = false) {
     let closest;
@@ -596,9 +604,10 @@ export function createRealCity(scene, data, elevation, materials) {
     );
   }
 
-  function support(x, z, ceiling = Infinity) {
+  function support(x, z, ceiling = Infinity, onlyLandable = false) {
     let top = height(x, z);
     for (const volume of buildingIndex.get(key(x, z)) || []) {
+      if (onlyLandable && volume.landable === false) continue;
       if (volume.top <= ceiling && volume.top > top && insideFootprint(x, z, volume.rings))
         top = volume.top;
     }
@@ -612,13 +621,13 @@ export function createRealCity(scene, data, elevation, materials) {
   }
 
   function landingAt(x, z, currentY) {
-    const top = support(x, z, currentY);
+    const top = support(x, z, currentY, true);
     if (canStand(x, z) && !blocked(x, z, top + 0.08, top + 1.75)) return [x, top, z];
     for (let range = 2; range <= 24; range += 2) {
       for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 6) {
         const px = x + Math.cos(angle) * range;
         const pz = z + Math.sin(angle) * range;
-        const y = support(px, pz, currentY);
+        const y = support(px, pz, currentY, true);
         if (canStand(px, pz) && !blocked(px, pz, y + 0.08, y + 1.75)) return [px, y, pz];
       }
     }
@@ -737,87 +746,4 @@ function makePavilion(scene, [x, z], base) {
   mesh(new T.CylinderGeometry(2.96, 3.08, 0.12, 8), 0x9e754e, 5.1);
   mesh(new T.SphereGeometry(0.32, 8, 6), 0xbda46d, 6.75);
   scene.add(pavilion);
-}
-
-function addBridgeTowers(scene, bridgeShapes) {
-  const geometry = new T.BoxGeometry(1, 1, 1);
-  const stone = new T.MeshLambertMaterial({ color: 0xb9b4aa });
-  const cable = new T.MeshLambertMaterial({ color: 0xb3b1a5 });
-  const across = new T.Vector3();
-  const up = new T.Vector3(0, 1, 0);
-  const cableGeometry = new T.CylinderGeometry(0.16, 0.16, 1, 6);
-  function stay(a, b) {
-    across.subVectors(b, a);
-    const obj = new T.Mesh(cableGeometry, cable);
-    obj.position.copy(a).addScaledVector(across, 0.5);
-    obj.scale.y = across.length();
-    obj.quaternion.setFromUnitVectors(up, across.normalize());
-    scene.add(obj);
-  }
-  for (const [targetX, towers, fan] of [
-    [-3786, [-85, 203], true],
-    [5096, [720, 1240], false],
-  ]) {
-    const pairs = [];
-    for (const z of towers) {
-      const matches = bridgeShapes.filter(
-        (road) =>
-          Math.abs(road.ax - targetX) < 650 &&
-          z >= Math.min(road.az, road.bz) &&
-          z <= Math.max(road.az, road.bz),
-      );
-      if (!matches.length) continue;
-      const x =
-        matches.reduce(
-          (sum, road) =>
-            sum + road.ax + ((road.bx - road.ax) * (z - road.az)) / (road.bz - road.az),
-          0,
-        ) / matches.length;
-      const deck = matches[0].rise(x, z);
-      const top = deck + (fan ? 48 : 60);
-      pairs.push({ x, z, top, deck });
-      for (const side of [-1, 1]) {
-        const px = x + side * 15;
-        const pier = new T.Mesh(geometry, stone);
-        pier.scale.set(3.8, top + 2, 5);
-        pier.position.set(px, (top - 2) / 2, z);
-        scene.add(pier);
-        if (fan) {
-          for (const direction of [-1, 1]) {
-            for (let i = 1; i < 6; i++) {
-              const anchor = z + direction * i * 21;
-              stay(
-                new T.Vector3(px, top - 4 - i * 2.5, z),
-                new T.Vector3(px, matches[0].rise(px, anchor) + 0.8, anchor),
-              );
-            }
-          }
-        }
-      }
-      const lintel = new T.Mesh(geometry, stone);
-      lintel.scale.set(31, 3.5, 4);
-      lintel.position.set(x, top - 11, z);
-      scene.add(lintel);
-    }
-    if (!fan && pairs.length === 2) {
-      const [a, b] = pairs;
-      for (const side of [-1, 1]) {
-        const point = (t) =>
-          new T.Vector3(
-            T.MathUtils.lerp(a.x, b.x, t) + side * 11,
-            T.MathUtils.lerp(a.top, b.top, t) - 4 - 42 * (4 * t * (1 - t)),
-            T.MathUtils.lerp(a.z, b.z, t),
-          );
-        for (let i = 0; i < 16; i++) {
-          const at = i / 16;
-          const p = point(at);
-          stay(p, point((i + 1) / 16));
-          if (i > 0 && i % 2 === 0) {
-            const atDeck = T.MathUtils.lerp(a.deck, b.deck, at);
-            stay(p, new T.Vector3(p.x, atDeck + 0.9, p.z));
-          }
-        }
-      }
-    }
-  }
 }

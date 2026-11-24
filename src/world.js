@@ -64,6 +64,22 @@ export function loadModels() {
   );
   return loading;
 }
+let streetCarsLoading;
+export function loadStreetCars() {
+  if (streetCarsLoading) return streetCarsLoading;
+  const loader = new GLTFLoader();
+  streetCarsLoading = Promise.all(
+    ['taxi', 'suv', 'delivery'].map(async (type) => {
+      const { scene } = await loader.loadAsync(media + type + '.glb');
+      scene.updateMatrixWorld(true);
+      glbs[type] = scene;
+    }),
+  ).catch((error) => {
+    streetCarsLoading = undefined;
+    throw error;
+  });
+  return streetCarsLoading;
+}
 const solid = new T.MeshStandardMaterial({ roughness: 0.79 });
 const road = new T.MeshStandardMaterial({ roughness: 0.42, metalness: 0.21 });
 const glow = new T.MeshBasicMaterial({ color: 0xffffff, fog: true });
@@ -150,7 +166,8 @@ export function vehicleModel(type, tint) {
     const bounds = new T.Box3().setFromObject(model);
     const center = bounds.getCenter(new T.Vector3());
     const size = bounds.getSize(new T.Vector3());
-    const scale = (type === 'van' ? 5.1 : 4.35) / Math.max(size.x, size.z);
+    const length = { van: 5.1, delivery: 5.8, suv: 4.7 }[type] ?? 4.35;
+    const scale = length / Math.max(size.x, size.z);
     const pivot = new T.Group();
     model.position.sub(new T.Vector3(center.x, bounds.min.y, center.z));
     pivot.add(model);
@@ -159,7 +176,8 @@ export function vehicleModel(type, tint) {
     group.add(pivot);
     model.traverse((node) => {
       if (!node.isMesh) return;
-      if (node.name.includes('wheel')) wheels.push(node);
+      if (node.name.includes('wheel') && !(type === 'suv' && node.name === 'wheel-back'))
+        wheels.push(node);
       if (tint && (node.name.includes('body') || node.name.includes('spoiler'))) {
         node.material = node.material.clone();
         const map = bodyPaint(type, node.material.map, tint);

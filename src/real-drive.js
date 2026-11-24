@@ -6,13 +6,58 @@ import { createInput } from './input.js';
 import { createRealCity } from './real-city.js';
 import { lightRealCity } from './real-light.js';
 import { loadRealMaterials } from './real-materials.js';
-import { loadModels, personModel, vehicleModel } from './world.js';
+import { loadModels, loadStreetCars, personModel, vehicleModel } from './world.js';
 
 const clamp = T.MathUtils.clamp;
 const forward = (yaw) => [-Math.sin(yaw), -Math.cos(yaw)];
 const angleBetween = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 const damp = (current, goal, rate, dt) => T.MathUtils.lerp(current, goal, 1 - Math.exp(-rate * dt));
 const inspect = import.meta.env.DEV && new URLSearchParams(location.search).has('inspect');
+const streetCars = {
+  ...cars,
+  taxi: {
+    name: '城市出租车',
+    color: '#ebcc61',
+    speed: 29,
+    power: 9.4,
+    turn: 1.69,
+    size: 1.08,
+    length: 4.35,
+  },
+  suv: {
+    name: '城市越野车',
+    color: '#748894',
+    speed: 30,
+    power: 8.8,
+    turn: 1.49,
+    size: 1.13,
+    length: 4.7,
+  },
+  delivery: {
+    name: '厢式货车',
+    color: '#ddd6bd',
+    speed: 21,
+    power: 6.4,
+    turn: 1.12,
+    size: 1.24,
+    length: 5.8,
+  },
+};
+const districtFleet = {
+  pavilion: ['ebike', 'taxi', 'sedan'],
+  'department-store': ['ebike'],
+  'post-office': ['delivery', 'ebike'],
+  tv: ['suv', 'ebike', 'taxi'],
+  museum: ['suv', 'taxi', 'van'],
+  square: ['taxi', 'ebike'],
+  'north-ferry': ['ebike', 'van'],
+  'south-ferry': ['ebike', 'delivery'],
+  queshi: ['sedan', 'suv'],
+  'bay-bridge': ['suv', 'delivery'],
+  diving: ['sedan', 'ebike'],
+  mountain: ['suv', 'ebike'],
+  east: ['coupe', 'suv', 'ebike'],
+};
 
 export async function createRealDrive({ stage, touch, store, audio, onLoad, callbacks }) {
   onLoad('正在读取内海湾真实路网和建筑轮廓');
@@ -22,9 +67,10 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     return response.json();
   }
   const [data, elevation] = await Promise.all([
-    readMap('inner-bay-v2.json'),
-    readMap('inner-bay-elevation.json'),
+    readMap('inner-bay-v3.json'),
+    readMap('inner-bay-elevation-v3.json'),
     loadModels(),
+    loadStreetCars(),
   ]);
   const canvas = stage.querySelector('#real-world');
   const ui = Object.fromEntries([...stage.querySelectorAll('[id]')].map((node) => [node.id, node]));
@@ -47,17 +93,25 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   scene.add(pedestrian.group);
   const footShadow = new T.Mesh(
     new T.CircleGeometry(0.53, 20),
-    new T.MeshBasicMaterial({ color: 0x233137, transparent: true, opacity: 0.23, depthWrite: false }),
+    new T.MeshBasicMaterial({
+      color: 0x233137,
+      transparent: true,
+      opacity: 0.23,
+      depthWrite: false,
+    }),
   );
   footShadow.rotation.x = -Math.PI / 2;
   scene.add(footShadow);
 
-  const rides = city.places.map(({ point }, index) => {
-    const type = index % 3 === 0 ? 'ebike' : 'sedan';
-    const model = vehicleModel(type, index % 2 ? '#e1c3a2' : '#7ca6a0');
-    scene.add(model.group);
-    return { ...model, type, point, x: 0, z: 0, speed: 0, yaw: 0, hp: 100 };
-  });
+  const rides = city.places.flatMap(({ id, point }) =>
+    districtFleet[id].map((type, index) => {
+      const spec = streetCars[type];
+      const tint = ['taxi', 'suv', 'delivery'].includes(type) ? undefined : spec.color;
+      const model = vehicleModel(type, tint);
+      scene.add(model.group);
+      return { ...model, type, spec, point, index, x: 0, z: 0, speed: 0, yaw: 0, hp: 100 };
+    }),
+  );
   let active = false;
   let paused = true;
   let flight = false;
@@ -120,11 +174,13 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   function updateHud() {
     nearest =
       !flight && !landing && !driving && grounded
-        ? rides.find(
-            (ride) =>
-              Math.hypot(ride.x - x, ride.z - z) < 3.5 &&
-              Math.abs(city.height(ride.x, ride.z) - altitude) < 1.2,
-          )
+        ? rides
+            .filter(
+              (ride) =>
+                Math.hypot(ride.x - x, ride.z - z) < 3.5 &&
+                Math.abs(city.height(ride.x, ride.z) - altitude) < 1.2,
+            )
+            .sort((a, b) => Math.hypot(a.x - x, a.z - z) - Math.hypot(b.x - x, b.z - z))[0]
         : null;
     const nearby = city.places.reduce((best, place) =>
       Math.hypot(place.point[0] - x, place.point[1] - z) <
@@ -175,7 +231,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       ui['touch-brake-label'].textContent = '刹车';
       setIcon(ui['touch-brake-icon'], 'brake');
       ui.condition.style.width = '100%';
-      ui['car-label'].textContent = cars[driving.type].name;
+      ui['car-label'].textContent = driving.spec.name;
       ui['drive-status'].textContent = impact > 0.2 ? '发生碰撞' : '自由驾驶';
     }
     const canExit = driving && Math.abs(driving.speed) < 2.6;
@@ -185,7 +241,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         ? '下车'
         : nearest.type === 'ebike'
           ? '骑上电动车'
-          : '上车';
+          : '驾驶' + nearest.spec.name;
       setIcon(ui['interaction-icon'], canExit ? 'exit' : nearest.type === 'ebike' ? 'bike' : 'car');
     }
     drawMap(ui['map-mini'], false);
@@ -203,6 +259,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         velocity: velocity.toArray(),
         paused,
         speed: driving?.speed ?? null,
+        vehicle: driving?.type ?? null,
         buildings: city.buildings,
         roadSegments: city.roads.length,
         draws: renderer.info.render.calls,
@@ -267,18 +324,35 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       if (detailed) {
         paint.font = 'bold 12px sans-serif';
         paint.fillStyle = '#ffe6ac';
+        const placed = [];
         for (const { point, name } of city.places) {
           const [px, pz] = map(point);
           paint.beginPath();
           paint.arc(px, pz, 3.2, 0, Math.PI * 2);
           paint.fill();
-          const label = name === '小公园中山纪念亭' ? '小公园' : name;
+          const label =
+            {
+              小公园中山纪念亭: '小公园',
+              潮汕历史文化博览中心: '潮博馆',
+              南生百货大楼: '南生百货',
+            }[name] || name;
           const textWidth = paint.measureText(label).width;
-          paint.fillText(
-            label,
-            Math.min(width - textWidth - 6, px + 6),
-            pz + (name === '人民广场' ? -6 : 4),
+          const x = Math.min(width - textWidth - 6, px + 6);
+          const options = [4, -9, 17, -22, 30, -35];
+          const offset = options.find(
+            (offset) =>
+              !placed.some(
+                (other) =>
+                  x < other.x + other.width &&
+                  x + textWidth > other.x &&
+                  Math.abs(pz + offset - other.y) < 12,
+              ),
           );
+          if (offset !== undefined) {
+            const y = pz + offset;
+            paint.fillText(label, x, y);
+            placed.push({ x, y, width: textWidth });
+          }
         }
         cached = base;
       }
@@ -405,7 +479,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     } else if (
       name === 'gear' &&
       driving &&
-      !cars[driving.type].noReverse &&
+      !driving.spec.noReverse &&
       Math.abs(driving.speed) < 1
     ) {
       driving.reverseGear = !driving.reverseGear;
@@ -441,8 +515,12 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   function rideFits(px, pz, ride, size) {
     if (!city.clear(px, pz, size)) return false;
     const [fx, fz] = forward(ride.yaw);
-    const end = ride.type === 'ebike' ? 0.45 : 0.96;
+    const end = ride.type === 'ebike' ? 0.45 : (ride.spec.length || 4.35) * 0.27;
     const roadHeight = city.height(px, pz);
+    for (const parked of rides) {
+      if (parked === ride || Math.abs(city.height(parked.x, parked.z) - roadHeight) > 2) continue;
+      if (Math.hypot(parked.x - px, parked.z - pz) < 1.5) return false;
+    }
     return [-end, end].every((offset) => {
       const x = px + fx * offset;
       const z = pz + fz * offset;
@@ -451,7 +529,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   }
 
   function moveRide(dt, lateral) {
-    const spec = cars[driving.type];
+    const spec = driving.spec;
     const [vx, vz] = drive(
       driving,
       spec,
@@ -710,8 +788,8 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       active = true;
       for (const ride of rides) {
         [ride.x, ride.z] = city.spawn(
-          [ride.point[0] + 14, ride.point[1] + 11],
-          cars[ride.type].size,
+          [ride.point[0] + 14 + ride.index * 7, ride.point[1] + 11 + ride.index * 12],
+          ride.spec.size,
         );
         ride.yaw = city.roadAngle(ride.x, ride.z);
         ride.speed = ride.pitch = ride.roll = 0;

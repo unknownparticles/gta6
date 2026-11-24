@@ -28,9 +28,9 @@ npm run preview
 
 大厅的「实景自由巡游」从小公园中山纪念亭出发。可在内海湾两岸步行、开车、骑电动车或俯瞰城市。按 M 或点地图可前往地标。按 F 或点「俯瞰」起飞，沿镜头朝向飞行，空格升高、Q 降低。再次按 F 或点「落地」会降到附近的地面或屋顶。电脑可点击场景锁定鼠标，按 Esc 释放。手机和平板用摇杆移动，在右侧拖动转镜头。「更多」中可进入经典自由模式。
 
-实景路网、岸线和建筑轮廓来自 [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright)，按 [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) 提供。浏览器加载随游戏发布的 [内海湾数据](public/maps/inner-bay-v2.json)。有高度或层数标签的楼体按标签生成，其余楼高和立面为估算，纪念亭和桥塔为游戏模型。
+实景路网、岸线和建筑轮廓来自 [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright)，按 [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) 提供。浏览器加载随游戏发布的 [内海湾数据](public/maps/inner-bay-v3.json)。有高度或层数标签的楼体按标签生成，其余楼高和立面为估算。电视塔、纪念亭、南生百货大楼、邮政总局旧址、潮汕历史文化博览中心和桥塔使用原创游戏模型。
 
-地形来自 [Mapzen Terrain Tiles](https://registry.opendata.aws/terrain-tiles/)。SRTM 数据由美国地质调查局提供，已裁剪、重采样并平整低洼区以适配道路。要重建地图，按 `scripts/build-real-map.py` 中的 `FEEDS` 顺序保存三份 OSM XML，并下载脚本中 `DEM` 指定的瓦片。安装 Shapely 2 后，运行 `python3 scripts/build-real-map.py west.osm east.osm south.osm --terrain N23E116.hgt.gz`。
+地形来自 [Mapzen Terrain Tiles](https://registry.opendata.aws/terrain-tiles/)。SRTM 数据由美国地质调查局提供，已裁剪、重采样并平整低洼区以适配道路。要重建地图，按 `scripts/build-real-map.py` 中的 `FEEDS` 顺序保存四份 OSM XML，并下载脚本中 `DEM` 指定的瓦片。安装 Shapely 2 后，运行 `python3 scripts/build-real-map.py west.osm east.osm south.osm north.osm --terrain N23E116.hgt.gz`。
 
 从大厅点「街区」或游戏内打开全图，可以选择地标导航。礐石大桥和海湾大桥都可以驾车通过。电视塔展厅、人民广场文化馆、东海岸展馆、礐石游客中心、牛田洋观鸟站、晚钟车库和S城医院可以步行进入。地理关系以[内海湾公告](https://www.shantou.gov.cn/cnst/zwgk/jcxxgk/gggs/content/post_2373787.html)及[榕江范围公告](https://www.shantou.gov.cn/stsswj/gkmlpt/content/2/2292/post_2292764.html)为参考。
 

@@ -14,12 +14,16 @@ from shapely.ops import polygonize, unary_union
 from shapely.strtree import STRtree
 
 ORIGIN = (116.697, 23.345)
-BOUNDS = (116.638, 23.320, 116.765, 23.369)
+BOUNDS = (116.638, 23.320, 116.765, 23.3835)
 FEEDS = [
     (116.638, 23.340, 116.704, 23.369),
     (116.700, 23.318, 116.769, 23.367),
     (116.630, 23.313, 116.704, 23.341),
+    (116.647, 23.367, 116.699, 23.3835),
 ]
+HEROES = {'582827032', '532956292', '532956280', '1077683036'}
+QUESHI_WAYS = {'116806818', '116806820', '116806832', '383102324', '52393474', '578158075'}
+BAY_BRIDGE_WAYS = {'59139023', '148917776'}
 SOURCE = 'https://api.openstreetmap.org/api/0.6/map?bbox='
 DEM = 'https://elevation-tiles-prod.s3.us-east-1.amazonaws.com/skadi/N23/N23E116.hgt.gz'
 WIDTH = dict(motorway=10, trunk=9, primary=8, secondary=7, tertiary=6, residential=5.5,
@@ -133,9 +137,9 @@ def read_terrain(path, bounds):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('extract', type=Path, nargs=3)
+    parser.add_argument('extract', type=Path, nargs=len(FEEDS))
     parser.add_argument('--terrain', type=Path, required=True)
-    parser.add_argument('--output', type=Path, default=Path('public/maps/inner-bay-v2.json'))
+    parser.add_argument('--output', type=Path, default=Path('public/maps/inner-bay-v3.json'))
     args = parser.parse_args()
     nodes, ways, relations, trees = {}, {}, {}, {}
     for filename in args.extract:
@@ -153,6 +157,7 @@ def main():
     max_x, max_z = project(east, south)
     clip = box(min_x, min_z, max_x, max_z)
     coast, inland_water, roads, features, places, green, piers = [], [], [], [], {}, [], []
+    hero_footprints = {}
     relation_outlines = set()
     for identifier, relation in relations.items():
         tag = tags(relation)
@@ -190,6 +195,10 @@ def main():
             path = line.simplify(0.55)
             bridge = tag.get('bridge', 'no') not in ('no', 'culvert')
             flags = int(bridge) + (2 if highway in ('path', 'footway', 'steps', 'pedestrian') else 0)
+            if identifier in QUESHI_WAYS:
+                flags |= 4
+            if identifier in BAY_BRIDGE_WAYS:
+                flags |= 8
             for part in geometries(path.intersection(clip), 'LineString'):
                 roads.append([WIDTH[highway], flags, points(part.coords)])
         if tag.get('man_made') == 'pier' and identifier not in relation_outlines:
@@ -206,6 +215,11 @@ def main():
                          for p in geometries(polygon.simplify(1), 'Polygon') if p.area > 90)
         if identifier in {'532956287', '527201447', '527264674', '528328082', '534229497', '583148030', '583148033', '527201452'} and not polygon.is_empty:
             places[identifier] = points([polygon.centroid.coords[0]])
+        if identifier in HEROES and not polygon.is_empty:
+            largest = max(geometries(polygon, 'Polygon'), key=lambda part: part.area)
+            hero_footprints[identifier] = rings(largest)
+            places[identifier] = points([largest.centroid.coords[0]])
+            continue
         is_building = tag.get('building', 'no') != 'no' or tag.get('building:part', 'no') != 'no'
         if is_building and identifier != '532956287' and identifier not in relation_outlines:
             features.extend((identifier, tag, part) for part in geometries(polygon, 'Polygon') if part.area >= 9)
@@ -233,13 +247,16 @@ def main():
     if len(land) < 2 or not places.get('532956287'):
         raise RuntimeError('Incomplete coastline or missing old-town landmark')
     buildings = buildings_for_scene(features, unary_union(land), piers)
-    data = dict(version=2, bounds=points([(min_x, min_z), (max_x, max_z)]),
+    if HEROES - hero_footprints.keys():
+        raise RuntimeError(f'Missing landmark outlines: {HEROES - hero_footprints.keys()}')
+    data = dict(version=3, bounds=points([(min_x, min_z), (max_x, max_z)]),
                 source=[SOURCE + ','.join(map(str, bbox)) for bbox in FEEDS],
                 land=[rings(face) for face in land], ponds=inland_water, roads=roads,
-                buildings=buildings, places=places, piers=[rings(pier) for pier in piers if pier.area > 2],
+                buildings=buildings, places=places, heroes=hero_footprints,
+                piers=[rings(pier) for pier in piers if pier.area > 2],
                 green=green, trees=[points([p]) for p in trees.values() if clip.contains(Point(p))])
     args.output.write_text(json.dumps(data, separators=(',', ':')) + '\n')
-    terrain = args.output.with_name('inner-bay-elevation.json')
+    terrain = args.output.with_name('inner-bay-elevation-v3.json')
     terrain.write_text(json.dumps(read_terrain(args.terrain, data['bounds']), separators=(',', ':')) + '\n')
     print(f'{len(buildings)} buildings, {len(roads)} roads, {len(land)} land polygons')
 
