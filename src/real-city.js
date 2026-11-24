@@ -39,6 +39,10 @@ function contains(x, z, shell) {
   return inside;
 }
 
+function insideFootprint(x, z, [outer, ...holes]) {
+  return contains(x, z, outer) && !holes.some((hole) => contains(x, z, hole));
+}
+
 function projection(x, z, { ax, az, dx, dz, length }) {
   const fraction = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / (length * length)));
   return [fraction, Math.hypot(x - ax - dx * fraction, z - az - dz * fraction)];
@@ -77,6 +81,7 @@ export function createRealCity(scene, data, elevation, materials) {
     point: data.places[source] || fallback,
   }));
   const buffers = new Map();
+  const arcades = [];
   const [x1, z1, x2, z2] = data.bounds;
   const globe = new T.Group();
   scene.add(globe);
@@ -348,9 +353,8 @@ export function createRealCity(scene, data, elevation, materials) {
     const roofHeight = base + height - offset;
     const oldTown = centerX > -3300 && centerX < -2100 && centerZ > -1780 && centerZ < -1020;
     const face = (oldTown ? arcadePalette : palette)[paletteIndex];
-    if (offset < 2.4) {
-      put(buildingIndex, rings, minX - 1.5, minZ - 1.5, maxX + 1.5, maxZ + 1.5);
-    }
+    const volume = { rings, bottom: base, top: roofHeight };
+    put(buildingIndex, volume, minX - 1.6, minZ - 1.6, maxX + 1.6, maxZ + 1.6);
     if (waterfront && !offset) foundation(rings, base, 0xa7a39b);
     const top = bucket(centerX, centerZ, 'concrete');
     roof(rings, roofHeight, paletteIndex % 3 ? 0x827b73 : 0x9b8b7c, (a, b, c, shade) =>
@@ -409,6 +413,14 @@ export function createRealCity(scene, data, elevation, materials) {
           const ox = ((outward * (az - bz)) / length) * 0.24;
           const oz = ((outward * (bx - ax)) / length) * 0.24;
           const trim = bucket(centerX, centerZ, 'concrete');
+          arcades.push({
+            wall: [ax, az, bx, bz],
+            normal: [ox / 0.24, oz / 0.24],
+            base,
+            top: streetHeight,
+            bays,
+            face,
+          });
           for (const y of [streetHeight, roofHeight - 0.24]) {
             const a = [ax, y, az];
             const b = [bx, y, bz];
@@ -425,6 +437,97 @@ export function createRealCity(scene, data, elevation, materials) {
     }
   }
 
+  for (const { wall, normal, base, top, bays, face } of arcades) {
+    const [ax, az, bx, bz] = wall;
+    const [nx, nz] = normal;
+    const width = Math.hypot(bx - ax, bz - az) / bays;
+    const depth = 1.32;
+    const pick = (u, y, d) => [
+      T.MathUtils.lerp(ax, bx, u) + nx * d,
+      y,
+      T.MathUtils.lerp(az, bz, u) + nz * d,
+    ];
+    for (let bay = 0; bay < bays; bay++) {
+      const middle = pick((bay + 0.5) / bays, base, depth);
+      if (
+        !canStand(middle[0], middle[2]) ||
+        blocked(middle[0], middle[2], base + 0.1, top, width * 0.39)
+      )
+        continue;
+      const trim = bucket(middle[0], middle[2], 'concrete');
+      const u0 = bay / bays;
+      const u1 = (bay + 1) / bays;
+      const column = Math.min(0.44, width * 0.22);
+      const floor = base + 0.065;
+      const crown = top - 0.14;
+      const spring = Math.min(top - 0.8, base + 2.05);
+      const arch = (t) => spring + (crown - spring) * Math.sin(Math.PI * t);
+      quad(
+        trim,
+        pick(u0, top, 0),
+        pick(u1, top, 0),
+        pick(u1, top, depth),
+        pick(u0, top, depth),
+        face,
+      );
+      quad(
+        trim,
+        pick(u0, floor, 0),
+        pick(u0, floor, depth),
+        pick(u1, floor, depth),
+        pick(u1, floor, 0),
+        0xa38e7b,
+      );
+      for (let i = 0; i < 10; i++) {
+        const t = i / 10;
+        const t2 = (i + 1) / 10;
+        const start = u0 + (t * (width - column) + column / 2) / (bays * width);
+        const end = u0 + (t2 * (width - column) + column / 2) / (bays * width);
+        const lower = pick(start, arch(t), depth);
+        const upper = pick(end, arch(t2), depth);
+        quad(trim, lower, upper, pick(end, top, depth), pick(start, top, depth), face);
+        quad(
+          trim,
+          lower,
+          pick(start, arch(t), depth - 0.23),
+          pick(end, arch(t2), depth - 0.23),
+          upper,
+          0xb7a794,
+        );
+      }
+      for (const [u, span] of [
+        [u0, column / 2],
+        [u1, column / 2],
+      ]) {
+        const inward = u === u0 ? span : -span;
+        const end = u + inward / (bays * width);
+        const back = depth - column;
+        const points = [
+          pick(u, floor, depth),
+          pick(end, floor, depth),
+          pick(end, floor, back),
+          pick(u, floor, back),
+        ];
+        const cap = points.map(([x, , z]) => [x, top, z]);
+        for (let i = 0; i < 4; i++) {
+          const next = (i + 1) % 4;
+          quad(trim, points[i], points[next], cap[next], cap[i], face);
+        }
+        const rings = [points.map(([x, , z]) => [x, z])];
+        const xs = points.map(([x]) => x);
+        const zs = points.map(([, , z]) => z);
+        put(
+          buildingIndex,
+          { rings, bottom: floor, top },
+          Math.min(...xs) - 1.6,
+          Math.min(...zs) - 1.6,
+          Math.max(...xs) + 1.6,
+          Math.max(...zs) + 1.6,
+        );
+      }
+    }
+  }
+
   for (const group of buffers.values()) {
     if (group.position.length === 0) continue;
     const geometry = new T.BufferGeometry();
@@ -434,6 +537,10 @@ export function createRealCity(scene, data, elevation, materials) {
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
     const mesh = new T.Mesh(geometry, materials[group.layer] || materials.solid);
+    mesh.castShadow = ['concrete', 'shop', 'historic', 'modern', 'residence', 'bridge'].includes(
+      group.layer,
+    );
+    mesh.receiveShadow = group.layer !== 'waterFeature';
     globe.add(mesh);
   }
   makePavilion(globe, places[0].point, terrain(...places[0].point));
@@ -452,24 +559,70 @@ export function createRealCity(scene, data, elevation, materials) {
     return closest;
   }
 
-  function clear(x, z, radius = 0.45) {
-    if (x < x1 + 2 || x > x2 - 2 || z < z1 + 2 || z > z2 - 2) return false;
-    if (!roadAt(x, z, true) && !isLand(x, z) && !onPier(x, z)) return false;
-    if (Math.hypot(x - places[0].point[0], z - places[0].point[1]) < 4.5 + radius) return false;
-    for (const [outer, ...holes] of buildingIndex.get(key(x, z)) || []) {
-      if (contains(x, z, outer) && !holes.some((hole) => contains(x, z, hole))) return false;
-      for (const ring of [outer, ...holes]) {
+  function height(x, z) {
+    return Math.max(terrain(x, z), roadAt(x, z, true)?.rise(x, z) || 0, onPier(x, z) ? 0.11 : 0);
+  }
+
+  function blocked(x, z, bottom, top, radius = 0.45) {
+    const dx = x - plazaX;
+    const dz = z - plazaZ;
+    const pavilion = terrain(plazaX, plazaZ);
+    if (top > pavilion && bottom < pavilion + 6.8 && dx * dx + dz * dz < (4.5 + radius) ** 2)
+      return true;
+    for (const volume of buildingIndex.get(key(x, z)) || []) {
+      if (bottom >= volume.top - 0.04 || top <= volume.bottom + 0.02) continue;
+      if (insideFootprint(x, z, volume.rings)) return true;
+      for (const ring of volume.rings) {
         for (let i = 0; i < ring.length; i++) {
           const [ax, az] = ring[i];
           const [bx, bz] = ring[(i + 1) % ring.length];
           const dx = bx - ax;
           const dz = bz - az;
           const length = Math.hypot(dx, dz);
-          if (length > 0 && projection(x, z, { ax, az, dx, dz, length })[1] < radius) return false;
+          if (length > 0 && projection(x, z, { ax, az, dx, dz, length })[1] < radius) return true;
         }
       }
     }
-    return true;
+    return false;
+  }
+
+  function canStand(x, z) {
+    return (
+      x >= x1 + 2 &&
+      x <= x2 - 2 &&
+      z >= z1 + 2 &&
+      z <= z2 - 2 &&
+      Boolean(roadAt(x, z, true) || isLand(x, z) || onPier(x, z))
+    );
+  }
+
+  function support(x, z, ceiling = Infinity) {
+    let top = height(x, z);
+    for (const volume of buildingIndex.get(key(x, z)) || []) {
+      if (volume.top <= ceiling && volume.top > top && insideFootprint(x, z, volume.rings))
+        top = volume.top;
+    }
+    return top;
+  }
+
+  function clear(x, z, radius = 0.45) {
+    if (!canStand(x, z)) return false;
+    const y = height(x, z);
+    return !blocked(x, z, y + 0.08, y + 1.7, radius);
+  }
+
+  function landingAt(x, z, currentY) {
+    const top = support(x, z, currentY);
+    if (canStand(x, z) && !blocked(x, z, top + 0.08, top + 1.75)) return [x, top, z];
+    for (let range = 2; range <= 24; range += 2) {
+      for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 6) {
+        const px = x + Math.cos(angle) * range;
+        const pz = z + Math.sin(angle) * range;
+        const y = support(px, pz, currentY);
+        if (canStand(px, pz) && !blocked(px, pz, y + 0.08, y + 1.75)) return [px, y, pz];
+      }
+    }
+    return null;
   }
 
   function spawn(point, radius = 0.45) {
@@ -488,6 +641,10 @@ export function createRealCity(scene, data, elevation, materials) {
   }
 
   return {
+    blocked,
+    support,
+    canStand,
+    landingAt,
     clear,
     spawn,
     places,
@@ -516,9 +673,7 @@ export function createRealCity(scene, data, elevation, materials) {
       }
       return result;
     },
-    height(x, z) {
-      return Math.max(terrain(x, z), roadAt(x, z, true)?.rise(x, z) || 0, onPier(x, z) ? 0.11 : 0);
-    },
+    height,
   };
 }
 
@@ -528,6 +683,8 @@ function makePavilion(scene, [x, z], base) {
   const mesh = (geometry, shade, y) => {
     const object = new T.Mesh(geometry, new T.MeshLambertMaterial({ color: shade }));
     object.position.y = y;
+    object.castShadow = true;
+    object.receiveShadow = true;
     pavilion.add(object);
     return object;
   };
@@ -538,8 +695,44 @@ function makePavilion(scene, [x, z], base) {
     const pillar = mesh(new T.CylinderGeometry(0.22, 0.27, 3.8, 8), 0x9f5240, 2.5);
     pillar.position.set(Math.cos(angle) * 3.18, 2.5, Math.sin(angle) * 3.18);
   }
-  mesh(new T.CylinderGeometry(2.42, 4.9, 1.12, 8), 0x48616b, 4.85);
-  mesh(new T.CylinderGeometry(0.65, 3.02, 1.5, 8), 0x526d73, 5.82);
+  const roofProfile = (base, edge, inner, rise) => {
+    const positions = [];
+    const profile = [
+      [edge, 0],
+      [edge * 0.86, 0.03],
+      [edge * 0.63, rise * 0.27],
+      [inner, rise],
+    ];
+    const point = (side, ring, t) => {
+      const angle = (Math.PI / 4) * side;
+      const next = angle + Math.PI / 4;
+      const [radius, y] = profile[ring];
+      const edgeLift = (Math.abs(t - 0.5) * 2) ** 4 * 0.24 * (1 - ring / 4);
+      return [
+        radius * T.MathUtils.lerp(Math.cos(angle), Math.cos(next), t),
+        y + edgeLift,
+        radius * T.MathUtils.lerp(Math.sin(angle), Math.sin(next), t),
+      ];
+    };
+    for (let side = 0; side < 8; side++) {
+      for (let ring = 0; ring < profile.length - 1; ring++) {
+        for (let strip = 0; strip < 12; strip++) {
+          const a = point(side, ring, strip / 12);
+          const b = point(side, ring, (strip + 1) / 12);
+          const c = point(side, ring + 1, (strip + 1) / 12);
+          const d = point(side, ring + 1, strip / 12);
+          positions.push(...a, ...c, ...b, ...a, ...d, ...c);
+        }
+      }
+    }
+    const geometry = new T.BufferGeometry();
+    geometry.setAttribute('position', new T.Float32BufferAttribute(positions, 3));
+    geometry.computeVertexNormals();
+    const tile = mesh(geometry, 0x436765, base);
+    tile.material.side = T.DoubleSide;
+  };
+  roofProfile(4.4, 4.98, 2.3, 0.96);
+  roofProfile(5.24, 3.07, 0.58, 1.24);
   mesh(new T.CylinderGeometry(4.85, 4.98, 0.13, 8), 0xab8054, 4.34);
   mesh(new T.CylinderGeometry(2.96, 3.08, 0.12, 8), 0x9e754e, 5.1);
   mesh(new T.SphereGeometry(0.32, 8, 6), 0xbda46d, 6.75);

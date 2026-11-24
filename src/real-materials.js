@@ -83,7 +83,13 @@ export async function loadRealMaterials(renderer) {
             polygonOffsetFactor: -1,
             polygonOffsetUnits: offset,
           };
-    return new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide, map, ...options });
+    return new T.MeshStandardMaterial({
+      vertexColors: true,
+      side: T.DoubleSide,
+      map,
+      roughness: 0.87,
+      ...options,
+    });
   };
   return {
     solid,
@@ -98,7 +104,13 @@ export async function loadRealMaterials(renderer) {
     marking: material(null, -6),
     shop: material(facade(renderer, concrete?.image, 'shop')),
     historic: material(facade(renderer, concrete?.image, 'historic')),
-    modern: material(facade(renderer, concrete?.image, 'modern')),
+    modern: new T.MeshStandardMaterial({
+      vertexColors: true,
+      side: T.DoubleSide,
+      map: facade(renderer, concrete?.image, 'modern'),
+      roughness: 0.39,
+      metalness: 0.28,
+    }),
     residence: material(facade(renderer, concrete?.image, 'residence')),
   };
 }

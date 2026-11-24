@@ -4,11 +4,14 @@ import { drive } from './driving.js';
 import { setIcon } from './icons.js';
 import { createInput } from './input.js';
 import { createRealCity } from './real-city.js';
+import { lightRealCity } from './real-light.js';
 import { loadRealMaterials } from './real-materials.js';
 import { loadModels, personModel, vehicleModel } from './world.js';
 
 const clamp = T.MathUtils.clamp;
 const forward = (yaw) => [-Math.sin(yaw), -Math.cos(yaw)];
+const angleBetween = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
+const damp = (current, goal, rate, dt) => T.MathUtils.lerp(current, goal, 1 - Math.exp(-rate * dt));
 const inspect = import.meta.env.DEV && new URLSearchParams(location.search).has('inspect');
 
 export async function createRealDrive({ stage, touch, store, audio, onLoad, callbacks }) {
@@ -33,12 +36,8 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   renderer.toneMapping = T.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.13;
   const scene = new T.Scene();
-  scene.background = new T.Color(0x9ebdc9);
-  scene.fog = new T.Fog(0x9ebdc9, 1200, 9000);
-  scene.add(new T.HemisphereLight(0xfff0dc, 0x7d8a9b, 2.05));
-  const sun = new T.DirectionalLight(0xffe1be, 1.75);
-  sun.position.set(-480, 680, 270);
-  scene.add(sun);
+  const low = () => touch() || store.data.settings.graphics === 'low';
+  const updateShadow = lightRealCity(renderer, scene, low);
   const city = createRealCity(scene, data, elevation, await loadRealMaterials(renderer));
   const camera = new T.PerspectiveCamera(62, 1, 0.28, 14000);
   const focus = new T.Vector3();
@@ -46,6 +45,12 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   const heading = new T.Vector3();
   const pedestrian = personModel(0xbf6682, 1);
   scene.add(pedestrian.group);
+  const footShadow = new T.Mesh(
+    new T.CircleGeometry(0.53, 20),
+    new T.MeshBasicMaterial({ color: 0x233137, transparent: true, opacity: 0.23, depthWrite: false }),
+  );
+  footShadow.rotation.x = -Math.PI / 2;
+  scene.add(footShadow);
 
   const rides = city.places.map(({ point }, index) => {
     const type = index % 3 === 0 ? 'ebike' : 'sedan';
@@ -63,6 +68,14 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   let z = 0;
   let altitude = 0;
   let lift = 0;
+  let launchHeight = null;
+  let landing = null;
+  let grounded = true;
+  const velocity = new T.Vector3();
+  let viewBlend = 0;
+  let cameraArm = 4.5;
+  let lastLook = -10;
+  let impact = 0;
   let yaw = 0;
   let pitch = 0.09;
   let facing = 0;
@@ -73,13 +86,11 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   const mapCache = new WeakMap();
   const input = createInput(canvas, stage, action, () => active && !paused, touch);
   const { held, state } = input;
-  const low = () => touch() || store.data.settings.graphics === 'low';
   const pressing = (...codes) => codes.some((code) => held.has(code));
 
   function syncRide(ride) {
     ride.group.position.set(ride.x, city.height(ride.x, ride.z) + 0.02, ride.z);
-    ride.group.rotation.y = ride.yaw;
-    ride.group.rotation.x = 0;
+    ride.group.rotation.set(ride.pitch || 0, ride.yaw, ride.roll || 0, 'YXZ');
   }
 
   function pause(value = true) {
@@ -108,7 +119,13 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
 
   function updateHud() {
     nearest =
-      !flight && !driving ? rides.find((ride) => Math.hypot(ride.x - x, ride.z - z) < 3.5) : null;
+      !flight && !landing && !driving && grounded
+        ? rides.find(
+            (ride) =>
+              Math.hypot(ride.x - x, ride.z - z) < 3.5 &&
+              Math.abs(city.height(ride.x, ride.z) - altitude) < 1.2,
+          )
+        : null;
     const nearby = city.places.reduce((best, place) =>
       Math.hypot(place.point[0] - x, place.point[1] - z) <
       Math.hypot(best.point[0] - x, best.point[1] - z)
@@ -121,18 +138,22 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     ui['district-mark'].textContent = '图';
     ui['district-mark'].style.color = '';
     ui['objective-label'].textContent = flight
-      ? '空中俯瞰'
+      ? landing
+        ? '正在降落'
+        : launchHeight !== null
+          ? '正在起飞'
+          : '空中俯瞰'
       : driving
         ? '沿实景路网驾驶'
         : '实景地图';
     ui['objective-title'].textContent = flight
-      ? '高度 ' + Math.round(altitude) + ' 米'
+      ? '高度 ' + Math.round(altitude - city.height(x, z)) + ' 米'
       : '内海湾两岸';
     ui['objective-detail'].textContent = flight
       ? touch()
         ? '摇杆移动，右侧滑动看风景'
-        : '方向键移动，鼠标看风景'
-      : '打开地图可选择地标';
+        : '跟随镜头飞行 · 空格升高 / Q 降低'
+      : 'F 或点「俯瞰」起飞 · 地图可选地标';
     stage.classList.toggle('driving', Boolean(driving));
     stage.toggleAttribute('data-flight', flight);
     stage.classList.remove('swimming', 'aboard', 'volley');
@@ -140,7 +161,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     ui.crosshair.hidden = true;
     ui['foot-hud'].hidden = true;
     ui['drive-hud'].hidden = !driving;
-    ui['real-mode-switch'].textContent = flight ? '落地' : '俯瞰';
+    ui['real-mode-switch'].textContent = landing ? '取消降落' : flight ? '落地' : '俯瞰';
     ui['real-mode-switch'].hidden = Boolean(driving);
     ui['real-height-controls'].hidden = !flight || !touch();
     ui['game-gloss'].classList.remove('hurt');
@@ -155,7 +176,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       setIcon(ui['touch-brake-icon'], 'brake');
       ui.condition.style.width = '100%';
       ui['car-label'].textContent = cars[driving.type].name;
-      ui['drive-status'].textContent = '自由驾驶';
+      ui['drive-status'].textContent = impact > 0.2 ? '发生碰撞' : '自由驾驶';
     }
     const canExit = driving && Math.abs(driving.speed) < 2.6;
     ui.interaction.hidden = !nearest && !canExit;
@@ -175,6 +196,11 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         z,
         altitude,
         flight,
+        landing: Boolean(landing),
+        grounded,
+        yaw,
+        camera: camera.position.toArray(),
+        velocity: velocity.toArray(),
         paused,
         speed: driving?.speed ?? null,
         buildings: city.buildings,
@@ -288,8 +314,13 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     home = location;
     driving = null;
     flight = false;
-    altitude = lift = moving = 0;
+    launchHeight = landing = null;
+    velocity.set(0, 0, 0);
+    grounded = true;
+    viewBlend = 0;
+    lift = moving = impact = 0;
     [x, z] = city.spawn(location.point);
+    altitude = city.height(x, z);
     yaw = facing = Math.atan2(x - location.point[0], z - location.point[1]);
     pitch = 0.09;
     camera.near = 0.28;
@@ -298,32 +329,67 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     updateCamera(true);
   }
 
-  function cameraClear(px, pz) {
-    return city.clear(px, pz, 0.23);
-  }
-
   function updateCamera(immediate = false, dt = 0.016) {
     const [fx, fz] = forward(yaw);
-    if (flight) {
-      camera.position.set(x, altitude, z);
-      camera.lookAt(x + fx * 300, altitude - 105 - pitch * 230, z + fz * 300);
-    } else {
-      const distance = driving ? 8.5 : 4.35;
-      let safe = distance;
-      for (let step = 0.7; step <= distance; step += 0.55) {
-        if (!cameraClear(x - fx * step, z - fz * step)) {
-          safe = Math.max(0.5, step - 0.6);
-          break;
-        }
+    const cameraPitch = flight ? pitch : clamp(pitch, -0.35, 0.62);
+    const horizontal = Math.cos(cameraPitch);
+    const lookY = -Math.sin(cameraPitch);
+    const eye = altitude + (driving ? 1.55 : 1.66);
+    const distance = driving
+      ? (driving.type === 'ebike' ? 5.9 : 7.6) + Math.abs(driving.speed) * 0.065
+      : 4.5;
+    viewBlend = immediate ? Number(flight) : damp(viewBlend, Number(flight), 5, dt);
+    const arm = distance * (1 - viewBlend);
+    let safe = arm;
+    for (let check = 0.34; check <= arm + 0.24; check += 0.27) {
+      const sample = Math.min(check, arm);
+      const px = x - fx * horizontal * sample;
+      const pz = z - fz * horizontal * sample;
+      const y = eye - lookY * sample;
+      if (y < city.height(px, pz) + 0.26 || city.blocked(px, pz, y - 0.2, y + 0.2, 0.21)) {
+        safe = Math.max(0.12, sample - 0.3);
+        break;
       }
-      const y = city.height(x, z) + altitude;
-      desired.set(x - fx * safe, y + (driving ? 3.45 : 2.45) + pitch * 4, z - fz * safe);
-      heading.set(x + fx * 4, y + 1.4 - pitch * 4, z + fz * 4);
-      const amount = immediate ? 1 : 1 - Math.exp(-dt * 14);
-      camera.position.lerp(desired, amount);
-      focus.lerp(heading, amount);
-      camera.lookAt(focus);
     }
+    cameraArm = immediate || safe < cameraArm ? safe : damp(cameraArm, safe, 4.8, dt);
+    const glance =
+      driving && impact > 0 && store.data.settings.movement
+        ? Math.sin(impact * 30) * impact * 0.23
+        : 0;
+    desired.set(
+      x - fx * horizontal * cameraArm,
+      eye - lookY * cameraArm + glance,
+      z - fz * horizontal * cameraArm,
+    );
+    desired.y = Math.max(desired.y, city.height(desired.x, desired.z) + 0.28);
+    camera.position.copy(desired);
+    heading.set(fx * horizontal, lookY, fz * horizontal);
+    focus.copy(desired).add(heading);
+    camera.lookAt(focus);
+  }
+
+  function toggleFlight() {
+    if (landing) {
+      landing = null;
+      velocity.set(0, 0, 0);
+    } else if (flight) {
+      const spot = city.landingAt(x, z, altitude);
+      if (!spot) {
+        callbacks.toast('附近没有可落地的位置，先飞向岸边。');
+        return;
+      }
+      launchHeight = null;
+      landing = spot;
+    } else {
+      grounded = false;
+      flight = true;
+      launchHeight = altitude + 30;
+      velocity.set(0, 0, 0);
+      lift = 0;
+      camera.near = 2;
+      camera.updateProjectionMatrix();
+    }
+    updateHud();
   }
 
   function action(name) {
@@ -332,24 +398,10 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       pause();
       callbacks.panel(name);
     } else if (name === 'survey' && !driving) {
-      flight = !flight;
-      if (flight) {
-        altitude = city.height(x, z) + 230;
-        if (Math.hypot(x - city.places[0].point[0], z - city.places[0].point[1]) < 170) {
-          yaw = Math.atan2(x + 1100, z - 350);
-          pitch = 0.34;
-        }
-      } else {
-        if (!city.clear(x, z)) [x, z] = city.spawn([x, z]);
-        altitude = 0;
-      }
-      camera.near = flight ? 7 : 0.28;
-      camera.updateProjectionMatrix();
-      lift = 0;
-      updateCamera(true);
-      updateHud();
-    } else if (name === 'jump' && !flight && !driving && !altitude && !lift) {
+      toggleFlight();
+    } else if (name === 'jump' && !flight && !driving && grounded) {
       lift = 5.9;
+      grounded = false;
     } else if (
       name === 'gear' &&
       driving &&
@@ -368,94 +420,245 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         [x, z] = city.clear(...side) ? side : [driving.x, driving.z];
         driving.speed = 0;
         driving = null;
+        altitude = city.height(x, z);
       } else if (!driving && nearest) {
         driving = nearest;
         driving.steer = driving.driveInput = driving.reverseWait = 0;
         driving.reverseGear = false;
         driving.travelYaw = driving.yaw;
         yaw = driving.yaw;
-        altitude = lift = 0;
+        lift = 0;
+        velocity.set(0, 0, 0);
         x = driving.x;
         z = driving.z;
+        altitude = city.height(x, z);
+        lastLook = clock;
       }
       updateHud();
     }
   }
 
+  function rideFits(px, pz, ride, size) {
+    if (!city.clear(px, pz, size)) return false;
+    const [fx, fz] = forward(ride.yaw);
+    const end = ride.type === 'ebike' ? 0.45 : 0.96;
+    const roadHeight = city.height(px, pz);
+    return [-end, end].every((offset) => {
+      const x = px + fx * offset;
+      const z = pz + fz * offset;
+      return city.clear(x, z, size) && Math.abs(city.height(x, z) - roadHeight) < 1.2;
+    });
+  }
+
+  function moveRide(dt, lateral) {
+    const spec = cars[driving.type];
+    const [vx, vz] = drive(
+      driving,
+      spec,
+      {
+        gas: pressing('KeyW', 'ArrowUp', 'gas'),
+        brake: pressing('KeyS', 'ArrowDown', 'reverse'),
+        handbrake: pressing('Space', 'hand'),
+        steering: clamp(-lateral, -1, 1),
+        reverse: driving.reverseGear,
+      },
+      dt,
+    );
+    const steps = Math.max(1, Math.ceil((Math.hypot(vx, vz) * dt) / 0.32));
+    const dx = (vx * dt) / steps;
+    const dz = (vz * dt) / steps;
+    for (let i = 0; i < steps; i++) {
+      if (rideFits(x + dx, z + dz, driving, spec.size)) {
+        x += dx;
+        z += dz;
+      } else {
+        const speed = Math.abs(driving.speed);
+        if (Math.abs(dx) >= Math.abs(dz) && rideFits(x + dx * 0.45, z, driving, spec.size))
+          x += dx * 0.45;
+        else if (rideFits(x, z + dz * 0.45, driving, spec.size)) z += dz * 0.45;
+        driving.speed *= speed > 7 && impact < 0.15 ? -0.16 : 0.28;
+        if (speed > 3.5) impact = Math.min(0.62, speed * 0.045);
+        break;
+      }
+    }
+    driving.x = x;
+    driving.z = z;
+    altitude = city.height(x, z);
+    const [fx, fz] = forward(driving.yaw);
+    const grade = city.height(x - fx, z - fz) - city.height(x + fx, z + fz);
+    driving.pitch = damp(driving.pitch || 0, Math.atan2(grade, 2), 9, dt);
+    const lean = driving.type === 'ebike' ? 0.32 : 0.08;
+    driving.roll = damp(
+      driving.roll || 0,
+      -driving.steer * lean * Math.min(1, Math.abs(driving.speed) / 8),
+      8,
+      dt,
+    );
+    for (const wheel of driving.wheels) wheel.rotateX((-driving.speed * dt) / 0.45);
+    syncRide(driving);
+    facing = driving.yaw;
+    if (Math.abs(driving.speed) > 1.2 && clock - lastLook > 1.05) {
+      yaw += angleBetween(facing, yaw) * (1 - Math.exp(-2.25 * dt));
+    }
+    audio.engine(driving.speed, driving.type !== 'ebike', false);
+  }
+
+  function fly(dt, lateral, depth, sprint) {
+    const [fx, fz] = forward(yaw);
+    let vx;
+    let vz;
+    let vy;
+    if (landing) {
+      const dx = landing[0] - x;
+      const dz = landing[2] - z;
+      const gap = Math.hypot(dx, dz);
+      const clearance =
+        Math.max(landing[1], city.support(x, z), city.support(x + dx * 0.5, z + dz * 0.5)) + 3;
+      const glide =
+        altitude < clearance && gap > 1 ? 0 : Math.min(16, gap * 2.8) / Math.max(0.001, gap);
+      vx = dx * glide;
+      vz = dz * glide;
+      const height = altitude - landing[1];
+      vy =
+        gap > 1
+          ? clamp((clearance + 1 - altitude) * 2, -14, 16)
+          : -Math.min(48, Math.max(2.4, height * 1.75));
+    } else {
+      const pace = (32 + Math.max(0, altitude - city.height(x, z)) * 0.34) * (sprint ? 2.5 : 1);
+      const rise = Number(pressing('Space', 'survey-up')) - Number(pressing('KeyQ', 'survey-down'));
+      if (rise < 0) launchHeight = null;
+      if (launchHeight !== null && altitude >= launchHeight - 0.25) launchHeight = null;
+      const elevation = -Math.sin(pitch) * depth + rise;
+      const planar = Math.cos(pitch) * depth;
+      const norm = Math.max(1, Math.hypot(planar, lateral, elevation));
+      vx = ((fx * planar + Math.cos(yaw) * lateral) * pace) / norm;
+      vz = ((fz * planar - Math.sin(yaw) * lateral) * pace) / norm;
+      vy =
+        launchHeight !== null && !rise
+          ? Math.min(28, (launchHeight - altitude) * 2.5)
+          : (elevation * pace) / norm;
+    }
+    velocity.x = damp(velocity.x, vx, landing ? 9 : 5, dt);
+    velocity.y = damp(velocity.y, vy, landing ? 9 : 5, dt);
+    velocity.z = damp(velocity.z, vz, landing ? 9 : 5, dt);
+    const steps = Math.max(1, Math.ceil((velocity.length() * dt) / 0.7));
+    for (let i = 0; i < steps; i++) {
+      const step = dt / steps;
+      const nearLanding = landing && Math.hypot(x - landing[0], z - landing[2]) < 0.65;
+      const minHeight = nearLanding ? landing[1] : city.height(x, z) + (landing ? 0 : 1.3);
+      const ny = clamp(altitude + velocity.y * step, minHeight, 820);
+      if (!city.blocked(x, z, ny + 0.09, ny + 1.78, 0.32)) altitude = ny;
+      else velocity.y = 0;
+      const nx = clamp(x + velocity.x * step, city.bounds[0] + 2, city.bounds[2] - 2);
+      const nz = clamp(z + velocity.z * step, city.bounds[1] + 2, city.bounds[3] - 2);
+      if (
+        altitude + 0.14 >= city.height(nx, z) &&
+        !city.blocked(nx, z, altitude + 0.09, altitude + 1.78, 0.34)
+      )
+        x = nx;
+      else velocity.x = 0;
+      if (
+        altitude + 0.14 >= city.height(x, nz) &&
+        !city.blocked(x, nz, altitude + 0.09, altitude + 1.78, 0.34)
+      )
+        z = nz;
+      else velocity.z = 0;
+      if (
+        landing &&
+        Math.hypot(x - landing[0], z - landing[2]) < 0.65 &&
+        altitude <= landing[1] + 0.42
+      ) {
+        [x, altitude, z] = landing;
+        flight = false;
+        landing = null;
+        grounded = true;
+        velocity.set(0, 0, 0);
+        camera.near = 0.28;
+        camera.updateProjectionMatrix();
+        break;
+      }
+    }
+    facing = yaw;
+  }
+
   function move(dt) {
-    yaw -= state.lookX;
-    pitch = clamp(pitch + state.lookY, -0.35, 0.57);
+    if (state.lookX || state.lookY) lastLook = clock;
+    const sensitivity = touch() ? 0.9 : 0.72;
+    yaw -= state.lookX * sensitivity;
+    pitch = clamp(pitch + state.lookY * sensitivity, flight ? -1.11 : -0.35, flight ? 1.18 : 0.64);
     state.lookX = state.lookY = 0;
+    impact = Math.max(0, impact - dt);
     const lateral =
       Number(pressing('KeyD', 'ArrowRight')) - Number(pressing('KeyA', 'ArrowLeft')) + state.x;
     const depth =
       Number(pressing('KeyW', 'ArrowUp')) - Number(pressing('KeyS', 'ArrowDown')) - state.y;
     if (driving) {
-      const spec = cars[driving.type];
-      const [vx, vz] = drive(
-        driving,
-        spec,
-        {
-          gas: pressing('KeyW', 'ArrowUp', 'gas'),
-          brake: pressing('KeyS', 'ArrowDown', 'reverse'),
-          handbrake: pressing('Space', 'hand'),
-          steering: clamp(-lateral, -1, 1),
-          reverse: driving.reverseGear,
-        },
-        dt,
-      );
-      const nextX = x + vx * dt;
-      const nextZ = z + vz * dt;
-      if (city.clear(nextX, nextZ, spec.size)) {
-        x = driving.x = nextX;
-        z = driving.z = nextZ;
-      } else driving.speed *= 0.22;
-      for (const wheel of driving.wheels) wheel.rotateX((-driving.speed * dt) / 0.45);
-      syncRide(driving);
-      facing = driving.yaw;
-      if (Math.abs(lateral) > 0.08 && Math.abs(driving.speed) > 0.5) {
-        yaw += Math.atan2(Math.sin(facing - yaw), Math.cos(facing - yaw)) * dt * 2.5;
-      }
-      audio.engine(driving.speed, driving.type !== 'ebike', false);
+      moveRide(dt, lateral);
       return;
     }
     audio.engine(0, false, false);
     const sprint = pressing('ShiftLeft', 'ShiftRight', 'sprint');
-    const pace = flight ? (sprint ? 310 : 135) : sprint ? 8.5 : 4.8;
+    if (flight) {
+      fly(dt, lateral, depth, sprint);
+      return;
+    }
+    const pace = sprint ? 8.5 : 4.8;
     const [fx, fz] = forward(yaw);
     const norm = Math.max(1, Math.hypot(lateral, depth));
-    const vx = ((fx * depth + Math.cos(yaw) * lateral) * pace) / norm;
-    const vz = ((fz * depth - Math.sin(yaw) * lateral) * pace) / norm;
-    if (flight) {
-      x = clamp(x + vx * dt, city.bounds[0], city.bounds[2]);
-      z = clamp(z + vz * dt, city.bounds[1], city.bounds[3]);
-      const rise = Number(pressing('Space', 'survey-up')) - Number(pressing('KeyQ', 'survey-down'));
-      altitude = clamp(altitude + rise * 125 * dt, city.height(x, z) + 28, 820);
-      facing = yaw;
-    } else {
-      const lastX = x;
-      const lastZ = z;
-      if (city.clear(x + vx * dt, z)) x += vx * dt;
-      if (city.clear(x, z + vz * dt)) z += vz * dt;
-      moving = Math.hypot(x - lastX, z - lastZ) / dt;
-      if (moving > 0.1) facing = Math.atan2(lastX - x, lastZ - z);
-      if (altitude || lift) {
-        lift -= 18 * dt;
-        altitude += lift * dt;
-        if (altitude <= 0) altitude = lift = 0;
-      }
+    const response = grounded ? 14 : 5;
+    velocity.x = damp(
+      velocity.x,
+      ((fx * depth + Math.cos(yaw) * lateral) * pace) / norm,
+      response,
+      dt,
+    );
+    velocity.z = damp(
+      velocity.z,
+      ((fz * depth - Math.sin(yaw) * lateral) * pace) / norm,
+      response,
+      dt,
+    );
+    const lastX = x;
+    const lastZ = z;
+    const tryWalk = (px, pz) => {
+      if (!city.canStand(px, pz)) return false;
+      const surface = city.support(px, pz, altitude + 0.43);
+      if (surface > altitude + 0.43) return false;
+      const y = Math.max(altitude, surface);
+      return !city.blocked(px, pz, y + 0.08, y + 1.72, 0.36);
+    };
+    if (tryWalk(x + velocity.x * dt, z)) x += velocity.x * dt;
+    else velocity.x = 0;
+    if (tryWalk(x, z + velocity.z * dt)) z += velocity.z * dt;
+    else velocity.z = 0;
+    moving = Math.hypot(x - lastX, z - lastZ) / dt;
+    if (moving > 0.12) {
+      const target = Math.atan2(lastX - x, lastZ - z);
+      facing += angleBetween(target, facing) * (1 - Math.exp(-18 * dt));
     }
+    const floor = city.support(x, z, altitude + 0.43);
+    if (grounded && floor < altitude - 0.43) grounded = false;
+    lift = grounded ? 0 : lift - dt * 19;
+    const nextY = altitude + lift * dt;
+    if (grounded || nextY <= floor) {
+      altitude = floor;
+      lift = 0;
+      grounded = true;
+    } else if (!city.blocked(x, z, nextY + 0.07, nextY + 1.74, 0.34)) {
+      altitude = nextY;
+    } else lift = Math.min(0, lift);
   }
 
   function animate(at) {
     frame = 0;
     if (!active || stage.hidden) return;
     frame = requestAnimationFrame(animate);
-    const dt = Math.max(0, Math.min(0.05, (at - tick) / 1000));
+    const dt = Math.max(0.001, Math.min(0.09, (at - tick) / 1000));
     tick = at;
     if (paused || document.hidden) return;
     clock += dt;
-    move(dt);
+    const steps = Math.ceil(dt / 0.035);
+    for (let i = 0; i < steps; i++) move(dt / steps);
     if (Math.floor(clock * 8) !== Math.floor((clock - dt) * 8)) {
       updateHud();
     }
@@ -469,14 +672,21 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       pedestrian.group.rotation.x = 0;
       pedestrian.walk(clock, moving);
     }
-    pedestrian.group.position.y += city.height(x, z) + altitude;
+    pedestrian.group.position.y += altitude;
     pedestrian.group.rotation.y = facing;
+    footShadow.visible = !flight && !driving;
+    if (footShadow.visible) {
+      const surface = city.support(x, z, altitude + 0.12);
+      footShadow.position.set(x + 0.13, surface + 0.024, z - 0.1);
+      footShadow.material.opacity = 0.22 / (1 + Math.max(0, altitude - surface) * 2.7);
+    }
     updateCamera(false, dt);
+    updateShadow(x, z, altitude, flight);
     renderer.render(scene, camera);
   }
 
-  canvas.addEventListener('dblclick', () => {
-    if (paused || !active || touch()) return;
+  canvas.addEventListener('click', () => {
+    if (paused || !active || touch() || document.pointerLockElement === canvas) return;
     try {
       canvas.requestPointerLock?.()?.catch?.(() => {});
     } catch {
@@ -504,7 +714,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
           cars[ride.type].size,
         );
         ride.yaw = city.roadAngle(ride.x, ride.z);
-        ride.speed = 0;
+        ride.speed = ride.pitch = ride.roll = 0;
         syncRide(ride);
       }
       locate();
