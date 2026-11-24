@@ -1,6 +1,7 @@
 import * as T from 'three';
 import { addCrossings, addHeroLandmarks, crossings } from './real-landmarks.js';
-import { addStreetTrees } from './street-models.js';
+import { cityDepthOffset, cityLayers } from './real-materials.js';
+import { addRetroTrees } from './retro-street.js';
 
 const cells = 240;
 const palette = [
@@ -8,8 +9,8 @@ const palette = [
   0xb7bbb4, 0xd4c0aa,
 ];
 const arcadePalette = [
-  0xd7b596, 0xd8c9b0, 0xc2ccbe, 0xc9957c, 0xddd1bb, 0xe1cfad, 0xc3cbd1, 0xbda996, 0xd5b1a5,
-  0xccd2c0, 0xe6d6c1,
+  0xf3d9b4, 0xeab2a7, 0xaacbcc, 0xc89098, 0xe9d6b4, 0xe5c9b2, 0xadc4df, 0xbd99ab, 0xe4bda5,
+  0xabcfbd, 0xead1b8,
 ];
 const landmarks = [
   ['pavilion', '小公园中山纪念亭', '532956287', [-2815, -1426]],
@@ -31,9 +32,9 @@ const key = (x, z) => Math.floor(x / cells) + ':' + Math.floor(z / cells);
 const pairs = (coords) =>
   Array.from({ length: coords.length / 2 }, (_, i) => [coords[2 * i], coords[2 * i + 1]]);
 const color = new T.Color();
-const driveColor = 0x59616a;
-const pathColor = 0xa19788;
-const waterColor = 0x477c8e;
+const driveColor = 0x555568;
+const pathColor = 0xc6958b;
+const waterColor = 0x4b9eaa;
 
 function contains(x, z, shell) {
   let inside = false;
@@ -75,7 +76,7 @@ function roof(rings, height, shade, addTriangle) {
   }
 }
 
-export function createRealCity(scene, data, elevation, materials, treeModel) {
+export function createRealCity(scene, data, elevation, materials) {
   const roads = [];
   const roadIndex = new Map();
   const buildingIndex = new Map();
@@ -87,6 +88,7 @@ export function createRealCity(scene, data, elevation, materials, treeModel) {
     point: data.places[source] || fallback,
   }));
   const buffers = new Map();
+  const sceneryChunks = [];
   const arcades = [];
   const [x1, z1, x2, z2] = data.bounds;
   const globe = new T.Group();
@@ -109,18 +111,23 @@ export function createRealCity(scene, data, elevation, materials, treeModel) {
   }
 
   const bucket = (x, z, layer = '') => {
-    const id = key(x, z) + layer;
-    if (!buffers.has(id)) buffers.set(id, { position: [], colors: [], uv: [], layer });
-    return buffers.get(id);
+    const id = layer === 'ground' ? 'ground' : Math.floor(x / 410) + ':' + Math.floor(z / 410);
+    if (!buffers.has(id)) buffers.set(id, { position: [], colors: [], uv: [], surface: [], global: layer === 'ground' });
+    return { batch: buffers.get(id), layer };
   };
 
-  function triangle(target, a, b, c, shade, uv) {
+  function triangle({ batch: target, layer }, a, b, c, shade, uv) {
     target.position.push(...a, ...b, ...c);
     color.setHex(shade);
-    for (let i = 0; i < 3; i++) target.colors.push(color.r, color.g, color.b);
+    const surface = cityLayers[layer] ?? 0;
+    const offset = cityDepthOffset(layer);
+    for (let i = 0; i < 3; i++) {
+      target.colors.push(color.r, color.g, color.b);
+      target.surface.push(surface, offset);
+    }
     if (uv) target.uv.push(...uv.flat());
     else {
-      const repeat = target.layer === 'road' || target.layer === 'bridge' ? 7 : 4.5;
+      const repeat = layer === 'road' || layer === 'bridge' ? 7 : 4.5;
       for (const [x, , z] of [a, b, c]) target.uv.push(x / repeat, z / repeat);
     }
   }
@@ -139,7 +146,7 @@ export function createRealCity(scene, data, elevation, materials, treeModel) {
 
   const ground = bucket(0, 0, 'ground');
   for (const rings of land) {
-    roof(rings, 0, 0xb3ac95, (a, b, c, shade) => triangle(ground, a, b, c, shade));
+    roof(rings, 0, 0xb4a492, (a, b, c, shade) => triangle(ground, a, b, c, shade));
     for (const ring of rings) {
       for (let i = 0; i < ring.length; i++) {
         const [ax, az] = ring[i];
@@ -184,7 +191,6 @@ export function createRealCity(scene, data, elevation, materials, treeModel) {
       }
     });
   }
-  addStreetTrees(globe, treeModel, data.trees, terrain);
 
   function isLand(x, z) {
     return land.some(
@@ -462,9 +468,9 @@ export function createRealCity(scene, data, elevation, materials, treeModel) {
         pick(u1, floor, 0),
         0xa38e7b,
       );
-      for (let i = 0; i < 10; i++) {
-        const t = i / 10;
-        const t2 = (i + 1) / 10;
+      for (let i = 0; i < 6; i++) {
+        const t = i / 6;
+        const t2 = (i + 1) / 6;
         const start = u0 + (t * (width - column) + column / 2) / (bays * width);
         const end = u0 + (t2 * (width - column) + column / 2) / (bays * width);
         const lower = pick(start, arch(t), depth);
@@ -478,6 +484,30 @@ export function createRealCity(scene, data, elevation, materials, treeModel) {
           upper,
           0xb7a794,
         );
+      }
+      if (bay % 3 === 0 && width > 2.1) {
+        const fabric = bucket(middle[0], middle[2], 'solid');
+        for (let stripe = 0; stripe < 5; stripe++) {
+          const left = T.MathUtils.lerp(u0, u1, (stripe + 0.4) / 5.8);
+          const right = T.MathUtils.lerp(u0, u1, (stripe + 1.4) / 5.8);
+          const color = stripe % 2 ? 0xf4cfc0 : Math.round(ax) % 2 ? 0xba5264 : 0x388d95;
+          quad(
+            fabric,
+            pick(left, top - 0.27, depth),
+            pick(right, top - 0.27, depth),
+            pick(right, top - 0.62, depth + 0.7),
+            pick(left, top - 0.62, depth + 0.7),
+            color,
+          );
+          quad(
+            fabric,
+            pick(left, top - 0.62, depth + 0.7),
+            pick(right, top - 0.62, depth + 0.7),
+            pick(right, top - 0.78, depth + 0.7),
+            pick(left, top - 0.78, depth + 0.7),
+            color,
+          );
+        }
       }
       for (const [u, span] of [
         [u0, column / 2],
@@ -518,13 +548,11 @@ export function createRealCity(scene, data, elevation, materials, treeModel) {
     geometry.setAttribute('position', new T.Float32BufferAttribute(group.position, 3));
     geometry.setAttribute('color', new T.Float32BufferAttribute(group.colors, 3));
     geometry.setAttribute('uv', new T.Float32BufferAttribute(group.uv, 2));
+    geometry.setAttribute('surface', new T.Float32BufferAttribute(group.surface, 2));
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
-    const mesh = new T.Mesh(geometry, materials[group.layer] || materials.solid);
-    mesh.castShadow = ['concrete', 'shop', 'historic', 'modern', 'residence', 'bridge'].includes(
-      group.layer,
-    );
-    mesh.receiveShadow = group.layer !== 'waterFeature';
+    const mesh = new T.Mesh(geometry, materials.batch);
+    if (!group.global) sceneryChunks.push(mesh);
     globe.add(mesh);
   }
   makePavilion(globe, places[0].point, terrain(...places[0].point));
@@ -541,6 +569,24 @@ export function createRealCity(scene, data, elevation, materials, treeModel) {
       Math.max(...zs) + 1.6,
     );
   });
+  const streetTrees = data.trees.map(([x, z]) => [x, z, false]);
+  for (const place of places.filter(({ id }) =>
+    ['pavilion', 'square', 'east', 'museum'].includes(id),
+  )) {
+    const [cx, cz] = place.point;
+    for (let row = 0; row < 3; row++) {
+      const radius = (place.id === 'pavilion' ? 9.4 : 25) + row * 24;
+      for (let index = 0; index < 10; index++) {
+        const angle = ((index + 0.35 * row) * Math.PI) / 5;
+        const x = cx + Math.cos(angle) * radius;
+        const z = cz + Math.sin(angle) * radius;
+        if (!isLand(x, z) || roadAt(x, z) || !clear(x, z, 1.2)) continue;
+        if (streetTrees.some(([px, pz]) => Math.hypot(px - x, pz - z) < 6)) continue;
+        streetTrees.push([x, z, true]);
+      }
+    }
+  }
+  addRetroTrees(globe, streetTrees, terrain);
 
   function roadAt(x, z, elevatedOnly = false) {
     let closest;
@@ -644,6 +690,13 @@ export function createRealCity(scene, data, elevation, materials, treeModel) {
   }
 
   return {
+    updateVisibility(x, z, range) {
+      for (const chunk of sceneryChunks) {
+        const { center, radius } = chunk.geometry.boundingSphere;
+        chunk.visible =
+          Math.abs(center.x - x) < range + radius && Math.abs(center.z - z) < range + radius;
+      }
+    },
     blocked,
     support,
     pavementHeight,

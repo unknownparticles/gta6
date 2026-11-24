@@ -41,10 +41,9 @@
 | --- | --- | --- |
 | `public/media/models/` 中的车辆、仓库、集装箱、路灯、护栏和调色板 | Kenney，CC0。选用 Car Kit 3.1、City Kit Industrial 2.0 和 City Kit Roads 中的部分 GLB。调色板分包命名并修改对应模型的贴图路径，许可文本随模型分发。 | [Car Kit](https://opengameart.org/content/car-kit)、[City Kit Industrial](https://opengameart.org/comment/113019)、[City Kit Roads](https://kenney.nl/assets/city-kit-roads) |
 | `public/media/models/taxi.glb`、`suv.glb`、`delivery.glb` | Kenney，CC0。调整 GLB 的贴图路径，复用现有车身调色板。 | [Kenney Car Kit](https://kenney.nl/assets/car-kit) |
-| `public/media/street-models/` | tevy，CC0。实景巡游使用 Casual Walker 的 LOD1，以及踏板车、双门跑车和街树的 LOD2。游戏内调整模型朝向、动作和车轮转向。 | [Casual Walker](https://tevy.dev/models/casual-walker)、[Motor Scooter](https://tevy.dev/models/motor-scooter)、[Electric Grand Tourer](https://tevy.dev/models/electric-gt)、[Plane Tree](https://tevy.dev/models/plane-tree) |
-| Three.js 自带的 Basis Universal 解码器 | Apache 2.0，许可文本随站点发布。 | [Basis Universal](https://github.com/BinomialLLC/basis_universal) |
 | `public/media/synth-wave.mp3` | Alex McCulloch，CC0。取原曲 00:11 起的 36 秒，加淡入淡出，以 96 kbps 发布。 | [Synth Wave](https://opengameart.org/content/synth-wave-alex-mcculloch-august-172021) |
 | `public/media/harbor.webp`、`public/media/garage.webp`、`public/media/icon.png` | 大厅封面和车库预览由本作海滨场景和车模渲染，站点图标截取自车库预览。 | [素材渲染页面](scripts/poster.html) |
 | `public/media/shantou-bay.webp` | 从游戏内的内海湾场景渲染的新大厅封面。模型、地标和布局采用游戏中的抽象化设计。 | [封面渲染页面](scripts/poster.html) |
 | `public/media/shantou-lobby.webp` | 游戏内人民广场、跨湾大桥、原创车手角色和车模渲染。 | [封面渲染页面](scripts/poster.html?lobby) |
+| 实景巡游的车手、踏板车和街树 | 本项目原创低多边形模型，以几何体和分段动作在游戏内生成。 | `src/retro-people.js`、`src/retro-street.js` |
 | `public/media/streets/` | Poly Haven 的 CC0 沥青、磨损混凝土和地砖。将颜色贴图转成灰度并调整亮度，再压缩为 256 像素的 WebP。旧城窗格与商铺立面在游戏内绘制。 | [Asphalt 02](https://polyhaven.com/a/asphalt_02)、[Concrete Floor Worn 001](https://polyhaven.com/a/concrete_floor_worn_001)、[Concrete Tiles](https://polyhaven.com/a/concrete_tiles)、[Poly Haven 授权](https://polyhaven.com/license) |

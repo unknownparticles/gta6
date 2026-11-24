@@ -60,6 +60,91 @@ function facade(renderer, backing, design) {
   return repeat(new T.CanvasTexture(canvas), renderer);
 }
 
+export const cityLayers = {
+  solid: 0,
+  ground: 1,
+  concrete: 1,
+  elevation: 1,
+  road: 2,
+  bridge: 2,
+  quay: 3,
+  shop: 4,
+  historic: 5,
+  modern: 6,
+  residence: 7,
+  green: 0,
+  marking: 0,
+  waterFeature: 0,
+};
+
+const depthOffsets = { elevation: 1, green: 2, waterFeature: 2, quay: 2, road: 3, marking: 6 };
+export const cityDepthOffset = (layer) => depthOffsets[layer] ?? 0;
+
+function cityBatchMaterial(images) {
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const pixels = new Uint8Array(size * size * 4 * images.length);
+  for (const [index, image] of images.entries()) {
+    ctx.fillStyle = 'white';
+    ctx.fillRect(0, 0, size, size);
+    if (image) ctx.drawImage(image, 0, 0, size, size);
+    pixels.set(ctx.getImageData(0, 0, size, size).data, index * size * size * 4);
+  }
+  const map = new T.DataArrayTexture(pixels, size, size, images.length);
+  map.colorSpace = T.SRGBColorSpace;
+  map.wrapS = map.wrapT = T.RepeatWrapping;
+  map.magFilter = T.LinearFilter;
+  map.minFilter = T.LinearMipmapLinearFilter;
+  map.generateMipmaps = true;
+  map.needsUpdate = true;
+  return new T.ShaderMaterial({
+    glslVersion: T.GLSL3,
+    side: T.DoubleSide,
+    uniforms: { surfaces: { value: map }, haze: { value: new T.Color(0xd79ca7) } },
+    vertexShader: `
+      in vec3 color;
+      in vec2 surface;
+      out vec2 texCoord;
+      out vec3 tint;
+      out vec3 outward;
+      out float depth;
+      flat out float layer;
+      void main() {
+        texCoord = uv;
+        tint = color;
+        outward = normal;
+        layer = surface.x;
+        vec4 eye = modelViewMatrix * vec4(position, 1.0);
+        depth = -eye.z;
+        gl_Position = projectionMatrix * eye;
+        gl_Position.z -= surface.y * 0.00000018 * gl_Position.w;
+      }`,
+    fragmentShader: `
+      precision highp sampler2DArray;
+      uniform sampler2DArray surfaces;
+      uniform vec3 haze;
+      in vec2 texCoord;
+      in vec3 tint;
+      in vec3 outward;
+      in float depth;
+      flat in float layer;
+      out vec4 retroColor;
+      #define gl_FragColor retroColor
+      void main() {
+        vec3 normal = normalize(outward) * (gl_FrontFacing ? 1.0 : -1.0);
+        vec3 color = texture(surfaces, vec3(texCoord.x, -texCoord.y, layer)).rgb * tint;
+        float sunlight = max(0.0, dot(normal, normalize(vec3(-.70,.47,.53))));
+        vec3 shading = mix(vec3(.54,.56,.70), vec3(.91,.84,.82), normal.y*.5+.5);
+        color *= shading + vec3(.69,.51,.37)*sunlight;
+        gl_FragColor = vec4(mix(color, haze, 1.0 - exp(-pow(max(depth,0.)*.00057,2.))), 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+}
+
 export async function loadRealMaterials(renderer) {
   const loader = new T.TextureLoader();
   async function read(file) {
@@ -73,44 +158,24 @@ export async function loadRealMaterials(renderer) {
     read('concrete'),
     read('paving'),
   ]);
-  const solid = new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide });
-  const material = (map, offset) => {
-    const options =
-      offset === undefined
-        ? {}
-        : {
-            polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: offset,
-          };
-    return new T.MeshStandardMaterial({
-      vertexColors: true,
-      side: T.DoubleSide,
-      map,
-      roughness: 0.87,
-      ...options,
-    });
-  };
+  const material = (map) =>
+    new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide, map });
+  const shop = facade(renderer, concrete?.image, 'shop');
+  const historic = facade(renderer, concrete?.image, 'historic');
+  const modern = facade(renderer, concrete?.image, 'modern');
+  const residence = facade(renderer, concrete?.image, 'residence');
   return {
-    solid,
-    ground: material(concrete),
-    concrete: material(concrete),
-    waterFeature: material(null, -2),
-    elevation: material(concrete, -1),
-    green: material(null, -2),
-    quay: material(paving, -2),
-    road: material(asphalt, -3),
-    bridge: material(asphalt),
-    marking: material(null, -6),
-    shop: material(facade(renderer, concrete?.image, 'shop')),
-    historic: material(facade(renderer, concrete?.image, 'historic')),
-    modern: new T.MeshStandardMaterial({
-      vertexColors: true,
-      side: T.DoubleSide,
-      map: facade(renderer, concrete?.image, 'modern'),
-      roughness: 0.39,
-      metalness: 0.28,
-    }),
-    residence: material(facade(renderer, concrete?.image, 'residence')),
+    batch: cityBatchMaterial([
+      null,
+      concrete?.image,
+      asphalt?.image,
+      paving?.image,
+      shop.image,
+      historic.image,
+      modern.image,
+      residence.image,
+    ]),
+    shop: material(shop),
+    historic: material(historic),
   };
 }

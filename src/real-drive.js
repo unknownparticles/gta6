@@ -6,7 +6,8 @@ import { createInput } from './input.js';
 import { createRealCity } from './real-city.js';
 import { lightRealCity } from './real-light.js';
 import { loadRealMaterials } from './real-materials.js';
-import { detailedRide, loadDetailModels, streetWalker } from './street-models.js';
+import { retroRider } from './retro-people.js';
+import { retroScooter } from './retro-street.js';
 import { loadModels, loadStreetCars, vehicleModel } from './world.js';
 
 const clamp = T.MathUtils.clamp;
@@ -76,10 +77,9 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   });
   renderer.toneMapping = T.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.13;
-  const [data, elevation, models, materials] = await Promise.all([
+  const [data, elevation, materials] = await Promise.all([
     readMap('inner-bay-v3.json'),
     readMap('inner-bay-elevation-v3.json'),
-    loadDetailModels(renderer),
     loadRealMaterials(renderer),
     loadModels(),
     loadStreetCars(),
@@ -89,13 +89,13 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   });
   const scene = new T.Scene();
   const low = () => touch() || store.data.settings.graphics === 'low';
-  const updateShadow = lightRealCity(renderer, scene, low);
-  const city = createRealCity(scene, data, elevation, materials, models['plane-tree']);
+  lightRealCity(scene);
+  const city = createRealCity(scene, data, elevation, materials);
   const camera = new T.PerspectiveCamera(62, 1, 0.28, 14000);
   const focus = new T.Vector3();
   const desired = new T.Vector3();
   const heading = new T.Vector3();
-  const pedestrian = streetWalker(models.walker);
+  const pedestrian = retroRider();
   scene.add(pedestrian.group);
   const footShadow = new T.Mesh(
     new T.CircleGeometry(0.53, 20),
@@ -113,10 +113,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     districtFleet[id].map((type, index) => {
       const spec = streetCars[type];
       const tint = ['taxi', 'suv', 'delivery'].includes(type) ? undefined : spec.color;
-      const model =
-        type === 'ebike' || type === 'coupe'
-          ? detailedRide(models[type === 'ebike' ? 'motor-scooter' : 'electric-gt'], type)
-          : vehicleModel(type, tint);
+      const model = type === 'ebike' ? retroScooter() : vehicleModel(type, tint);
       scene.add(model.group);
       return { ...model, type, spec, point, index, x: 0, z: 0, speed: 0, yaw: 0, hp: 100 };
     }),
@@ -127,6 +124,10 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   let frame = 0;
   let tick = 0;
   let clock = 0;
+  let pixelScale = 1;
+  let frameMean = 16.7;
+  let sampleFrames = 0;
+  let sceneTile = '';
   let x = 0;
   let z = 0;
   let altitude = 0;
@@ -173,7 +174,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     if (!active || stage.hidden || !stage.clientWidth || !stage.clientHeight) return;
     const width = stage.clientWidth;
     const height = stage.clientHeight;
-    renderer.setPixelRatio(Math.min(devicePixelRatio, low() ? 0.83 : 1.22));
+    renderer.setPixelRatio(Math.min(devicePixelRatio, low() ? 0.88 : 1.16) * pixelScale);
     renderer.setSize(width, height, false);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
@@ -582,8 +583,9 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       8,
       dt,
     );
-    if (driving.articulate) driving.articulate(driving.speed, driving.steer, dt);
-    else for (const wheel of driving.wheels) wheel.rotateX((-driving.speed * dt) / 0.45);
+    driving.articulateSteering?.(driving.steer);
+    for (const wheel of driving.wheels)
+      wheel.rotateX((-driving.speed * dt) / (driving.type === 'ebike' ? 0.23 : 0.45));
     syncRide(driving);
     facing = driving.yaw;
     if (Math.abs(driving.speed) > 1.2 && clock - lastLook > 1.05) {
@@ -742,9 +744,24 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     frame = 0;
     if (!active || stage.hidden) return;
     frame = requestAnimationFrame(animate);
-    const dt = Math.max(0.001, Math.min(0.09, (at - tick) / 1000));
+    const elapsed = at - tick;
+    const dt = Math.max(0.001, Math.min(0.09, elapsed / 1000));
     tick = at;
     if (paused || document.hidden) return;
+    if (elapsed > 0 && elapsed < 200) frameMean += (elapsed - frameMean) * 0.055;
+    if (++sampleFrames >= 42 && store.data.settings.graphics !== 'normal') {
+      sampleFrames = 0;
+      const scale =
+        frameMean > 34
+          ? Math.max(0.66, pixelScale - 0.12)
+          : frameMean < 20
+            ? Math.min(1, pixelScale + 0.07)
+            : pixelScale;
+      if (scale !== pixelScale) {
+        pixelScale = scale;
+        resize();
+      }
+    }
     clock += dt;
     const steps = Math.ceil(dt / 0.035);
     for (let i = 0; i < steps; i++) move(dt / steps);
@@ -772,7 +789,16 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       footShadow.material.opacity = 0.22 / (1 + Math.max(0, altitude - localSurface) * 2.7);
     }
     updateCamera(false, dt);
-    updateShadow(x, z, altitude, flight);
+    const outside = flight || altitude - city.height(x, z) > 40;
+    const tile = [Math.floor(x / 160), Math.floor(z / 160), outside, low()].join(':');
+    if (sceneTile !== tile) {
+      sceneTile = tile;
+      const range = outside ? (low() ? 2550 : 3500) : low() ? 1150 : 1600;
+      city.updateVisibility(x, z, range);
+      for (const ride of rides) {
+        ride.group.visible = ride === driving || Math.hypot(ride.x - x, ride.z - z) < range * 0.26;
+      }
+    }
     renderer.render(scene, camera);
   }
 
