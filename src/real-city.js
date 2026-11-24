@@ -1,5 +1,6 @@
 import * as T from 'three';
 import { addCrossings, addHeroLandmarks, crossings } from './real-landmarks.js';
+import { addStreetTrees } from './street-models.js';
 
 const cells = 240;
 const palette = [
@@ -74,7 +75,7 @@ function roof(rings, height, shade, addTriangle) {
   }
 }
 
-export function createRealCity(scene, data, elevation, materials) {
+export function createRealCity(scene, data, elevation, materials, treeModel) {
   const roads = [];
   const roadIndex = new Map();
   const buildingIndex = new Map();
@@ -183,20 +184,7 @@ export function createRealCity(scene, data, elevation, materials) {
       }
     });
   }
-  const trees = new T.InstancedMesh(
-    new T.IcosahedronGeometry(1, 1),
-    new T.MeshLambertMaterial({ color: 0x627e56 }),
-    data.trees.length,
-  );
-  const tree = new T.Object3D();
-  data.trees.forEach(([x, z], index) => {
-    const radius = 1.7 + (index % 4) * 0.25;
-    tree.position.set(x, terrain(x, z) + 3.5, z);
-    tree.scale.set(radius, radius * 1.45, radius);
-    tree.updateMatrix();
-    trees.setMatrixAt(index, tree.matrix);
-  });
-  globe.add(trees);
+  addStreetTrees(globe, treeModel, data.trees, terrain);
 
   function isLand(x, z) {
     return land.some(
@@ -571,6 +559,12 @@ export function createRealCity(scene, data, elevation, materials) {
     return Math.max(terrain(x, z), roadAt(x, z, true)?.rise(x, z) || 0, onPier(x, z) ? 0.11 : 0);
   }
 
+  function pavementHeight(x, z) {
+    const road = roadAt(x, z);
+    if (!road) return 0;
+    return road.foot ? 0.065 : road.width >= 8 ? 0.12 : 0.085;
+  }
+
   function blocked(x, z, bottom, top, radius = 0.45) {
     const dx = x - plazaX;
     const dz = z - plazaZ;
@@ -652,6 +646,7 @@ export function createRealCity(scene, data, elevation, materials) {
   return {
     blocked,
     support,
+    pavementHeight,
     canStand,
     landingAt,
     clear,
