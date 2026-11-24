@@ -1,5 +1,11 @@
 export function audioSystem(settings) {
-  const music = new Audio(import.meta.env.BASE_URL + 'media/synth-wave.mp3');
+  const stations = [
+    ['潮线 FM', 'tide-fm.mp3'],
+    ['夜港 FM', 'harbor-fm.mp3'],
+    ['关闭', null],
+  ];
+  let station = 0;
+  const music = new Audio(import.meta.env.BASE_URL + 'media/' + stations[station][1]);
   music.loop = true;
   music.preload = 'none';
   let context;
@@ -8,7 +14,7 @@ export function audioSystem(settings) {
   let moving = false;
   const playMusic = () => {
     music.volume = Number(settings.music);
-    if (music.volume === 0) music.pause();
+    if (music.volume === 0 || !stations[station][1]) music.pause();
     else music.play().catch(() => {});
   };
   const unlock = () => {
@@ -50,6 +56,16 @@ export function audioSystem(settings) {
   };
   return {
     unlock,
+    get stationName() {
+      return stations[station][0];
+    },
+    cycleStation() {
+      station = (station + 1) % stations.length;
+      const [name, track] = stations[station];
+      if (track) music.src = import.meta.env.BASE_URL + 'media/' + track;
+      playMusic();
+      return name;
+    },
     settings: playMusic,
     engine(speed, active, wanted) {
       moving = active;

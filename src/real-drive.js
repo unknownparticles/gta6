@@ -1,5 +1,9 @@
 import * as T from 'three';
-import { cars } from './data.js';
+import { cars, paints, weapons } from './data.js';
+import { createCoastActivities } from './coast-activities.js';
+import { createCityExtras } from './city-extras.js';
+import { cityMissions } from './city-missions.js';
+import { hasWeapon } from './save.js';
 import { drive } from './driving.js';
 import { setIcon } from './icons.js';
 import { createInput } from './input.js';
@@ -16,6 +20,20 @@ const forward = (yaw) => [-Math.sin(yaw), -Math.cos(yaw)];
 const angleBetween = (a, b) => Math.atan2(Math.sin(a - b), Math.cos(a - b));
 const damp = (current, goal, rate, dt) => T.MathUtils.lerp(current, goal, 1 - Math.exp(-rate * dt));
 const inspect = import.meta.env.DEV && new URLSearchParams(location.search).has('inspect');
+const beach = { court: [5510, 160], spawn: [5510, 168], water: [5558, 295] };
+const ferryBerths = [
+  [-1597, -923],
+  [-2510, 207],
+];
+const shortcuts = {
+  ferry: 'north-ferry',
+  beach: 'beach',
+  race: 'race',
+  gang: 'gang',
+  chase: 'pavilion',
+  garage: 'garage',
+  training: 'training',
+};
 const streetCars = {
   ...cars,
   taxi: {
@@ -140,13 +158,27 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   footShadow.rotation.x = -Math.PI / 2;
   scene.add(footShadow);
 
+  function parkedCar(type, point, index, tint = streetCars[type].color) {
+    const model = type === 'ebike' ? retroScooter() : vehicleModel(type, tint);
+    scene.add(model.group);
+    return {
+      ...model,
+      type,
+      spec: streetCars[type],
+      point,
+      index,
+      x: 0,
+      z: 0,
+      speed: 0,
+      yaw: 0,
+      hp: 100,
+    };
+  }
+
   const rides = city.places.flatMap(({ id, point }) =>
-    districtFleet[id].map((type, index) => {
-      const spec = streetCars[type];
-      const tint = ['taxi', 'suv', 'delivery'].includes(type) ? undefined : spec.color;
-      const model = type === 'ebike' ? retroScooter() : vehicleModel(type, tint);
-      scene.add(model.group);
-      return { ...model, type, spec, point, index, x: 0, z: 0, speed: 0, yaw: 0, hp: 100 };
+    (districtFleet[id] || []).map((type, index) => {
+      const tint = ['taxi', 'suv', 'delivery'].includes(type) ? null : streetCars[type].color;
+      return parkedCar(type, point, index, tint);
     }),
   );
   let active = false;
@@ -165,6 +197,13 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   let health = 100;
   let hurtUntil = 0;
   let admitted = false;
+  let swimming = false;
+  let waypoint;
+  let weapon = -1;
+  let nextStrike = 0;
+  let aiming = false;
+  let race;
+  let matchPaid = false;
   let x = 0;
   let z = 0;
   let altitude = 0;
@@ -218,6 +257,122 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   });
   const alert = life.alert;
   const hud = stage.querySelector('.hud');
+  const pointOf = (id) =>
+    city.places.find((place) => place.id === id).arrival ||
+    city.spawn(city.places.find((place) => place.id === id).point);
+  const points = Object.fromEntries(city.places.map(({ id }) => [id, pointOf(id)]));
+  const nearbyPoint = (origin, dx, dz) => {
+    const next = [origin[0] + dx, origin[1] + dz];
+    return city.clear(...next) ? next : city.spawn(next);
+  };
+  Object.assign(points, {
+    'hill-light': nearbyPoint(points.mountain, 64, -46),
+    'south-lookout': nearbyPoint(points['south-ferry'], 75, 25),
+    'east-return': nearbyPoint(beach.spawn, 8, 0),
+    buoy: beach.water,
+    'archive-desk': nearbyPoint(points.culture, 12, -7),
+    'tower-desk': nearbyPoint(points['tower-room'], 16, 8),
+    'hospital-desk': nearbyPoint(points.hospital, -10, 6),
+    queshi: city.bridgePoint('queshi', 30),
+    'west-arrival': city.bridgePoint('queshi', 625),
+    'bay-bridge': city.bridgePoint('bay-bridge', 935),
+  });
+  points.east = beach.spawn;
+  city.places.push({ id: 'beach', name: '东海岸沙滩', point: beach.spawn, arrival: beach.spawn });
+  const raceRoute = [350, 610, 940, 1280, 1640].map((z) => city.bridgePoint('bay-bridge', z));
+  city.places.push({ id: 'race', name: '海湾竞速起点', point: raceRoute[0] });
+  rides.push(parkedCar('coupe', raceRoute[0], 0));
+  let garageRide;
+  function prepareGarageCar() {
+    const type = store.data.car;
+    const paint = paints[store.data.paint[type]]?.color || streetCars[type].color;
+    if (garageRide?.type === type && garageRide.tint === paint) return;
+    if (garageRide && driving === garageRide) return;
+    if (garageRide) {
+      scene.remove(garageRide.group);
+      rides.splice(rides.indexOf(garageRide), 1);
+    }
+    garageRide = parkedCar(type, points.garage, 0, paint);
+    garageRide.tint = paint;
+    rides.push(garageRide);
+    placeCar(garageRide);
+  }
+
+  function placeCar(ride) {
+    [ride.x, ride.z] = city.spawn(
+      [ride.point[0] + 14 + ride.index * 7, ride.point[1] + 11 + ride.index * 12],
+      ride.spec.size,
+    );
+    ride.yaw = city.roadAngle(ride.x, ride.z);
+    ride.speed = ride.pitch = ride.roll = 0;
+    syncRide(ride);
+  }
+
+  const coast = createCoastActivities(
+    scene,
+    (color) => {
+      const model = retroRider(color);
+      return { ...model, walk: (time, speed) => model.animate({ speed, dt: 0.03 }) };
+    },
+    {
+      beach,
+      seaLevel: -1.25,
+      transit: 22,
+      buildPiers: false,
+      ferryStops: ['north-ferry', 'south-ferry'].map((id, index) => ({
+        pier: points[id],
+        berth: ferryBerths[index],
+      })),
+    },
+  );
+  const ferryRider = { x: 0, z: 0, yaw: 0 };
+  const beacon = new T.Group();
+  const ring = new T.Mesh(
+    new T.RingGeometry(0.95, 1.25, 28),
+    new T.MeshBasicMaterial({ color: 0xffd967, side: T.DoubleSide }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.15;
+  const diamond = new T.Mesh(
+    new T.OctahedronGeometry(0.62),
+    new T.MeshBasicMaterial({ color: 0xffd26e }),
+  );
+  diamond.position.y = 2.5;
+  beacon.add(ring, diamond);
+  scene.add(beacon);
+  const contacts = retroRider(0xbb9268);
+  contacts.group.visible = false;
+  scene.add(contacts.group);
+  const missions = cityMissions({
+    store,
+    points,
+    toast: callbacks.toast,
+    cue: (name) => audio.cue(name),
+    result: callbacks.result,
+    panel(name, data) {
+      const step = missions.step;
+      const [tx, tz] = step.point;
+      const ty = city.height(tx, tz);
+      const away = Math.atan2(z - tz, x - tx);
+      const ax = Math.cos(away);
+      const az = Math.sin(away);
+      playCinematic(
+        [
+          {
+            title: data.chapter,
+            location: '内海湾往事',
+            duration: 1.55,
+            from: [tx + ax * 5, ty + 2.9, tz + az * 5],
+            to: [tx + ax * 3.5, ty + 2, tz + az * 3.5],
+            target: [tx, ty + 1.25, tz],
+          },
+        ],
+        () => callbacks.panel(name, data),
+      );
+    },
+  });
+  const extras = createCityExtras({ scene, city, store, audio, callbacks, points });
+  coast.reset();
 
   function syncRide(ride) {
     const pavement = city.pavementHeight(ride.x, ride.z);
@@ -347,6 +502,142 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     );
   }
 
+  function serviceAt() {
+    if (flight || driving || swimming || coast.riding || !grounded) return null;
+    return city.venues.find((shop) => Math.hypot(shop.point[0] - x, shop.point[1] - z) < 3.35);
+  }
+
+  function buyMeal(id, index) {
+    const shop = serviceAt();
+    const meal = shop?.id === id && Number.isInteger(index) ? shop.menu?.[index] : null;
+    if (!meal) return '到店门口后再点单';
+    const [name, price, restore] = meal;
+    if (health >= 100) return '生命已满';
+    if (store.data.coins < price) return '潮票不足';
+    const gain = Math.min(restore, 100 - health);
+    store.data.coins -= price;
+    health += gain;
+    store.write();
+    updateHud();
+    audio.cue('mark');
+    return name + ' · 生命 +' + Math.ceil(gain);
+  }
+
+  function nearbyAction() {
+    if (coast.riding) {
+      return coast.canLeave
+        ? {
+            label: '下船',
+            icon: 'ferry',
+            run() {
+              [x, z] = coast.leave();
+              altitude = city.height(x, z);
+              grounded = true;
+              missions.ferryArrived();
+            },
+          }
+        : null;
+    }
+    if (flight) return null;
+    if (!driving && !swimming && grounded) {
+      const story = missions.interact(x, z, true);
+      if (story) return story;
+      const ports = [points['north-ferry'], points['south-ferry']];
+      const dock = ports.findIndex(([px, pz]) => Math.hypot(x - px, z - pz) < 7);
+      if (dock >= 0 && dock === coast.dock && !alert.level) {
+        return { label: '登上广礐轮渡', icon: 'ferry', run: () => coast.board() };
+      }
+      const shop = serviceAt();
+      if (shop?.kind === 'food')
+        return {
+          label: '点单 · ' + shop.name,
+          icon: 'heart',
+          run: () => callbacks.panel('food', { id: shop.id }),
+        };
+      if (shop?.kind === 'garage')
+        return { label: '进入晚钟车库', icon: 'car', run: () => callbacks.panel('garage') };
+      if (shop?.kind === 'training')
+        return {
+          label: '街坊训练场',
+          icon: 'target',
+          run() {
+            if (extras.startTraining() === 'equipped') weapon = 0;
+          },
+        };
+      if (shop?.kind === 'gang')
+        return { label: '查看维修街动静', icon: 'police', run: () => extras.startGang(clock) };
+      const pickup = extras.pickup(x, z, (amount) => {
+        health = Math.min(100, health + amount);
+      });
+      if (pickup) return pickup;
+      if (Math.hypot(x - beach.spawn[0], z - beach.spawn[1]) < 15 && !alert.level) {
+        return coast.game
+          ? { label: '离开沙滩球场', icon: 'target', run: () => coast.stop() }
+          : {
+              label: '开始沙滩排球',
+              icon: 'target',
+              run() {
+                matchPaid = false;
+                coast.start();
+              },
+            };
+      }
+    }
+    if (
+      driving &&
+      !race &&
+      !alert.level &&
+      Math.hypot(x - raceRoute[0][0], z - raceRoute[0][1]) < 17
+    ) {
+      return {
+        label: '开始海湾竞速',
+        icon: 'car',
+        run() {
+          race = { step: 1, start: clock };
+          callbacks.toast('沿桥通过所有检查点');
+        },
+      };
+    }
+    return null;
+  }
+
+  function fire() {
+    if (coast.game) {
+      coast.hit({ x, z });
+      return;
+    }
+    if (flight || driving || swimming || coast.riding || clock < nextStrike) return;
+    const spec = weapons[weapon];
+    const ammo = store.data.arsenal[weapon];
+    if (spec && !ammo.ammo) {
+      reload();
+      return;
+    }
+    nextStrike = clock + (spec?.interval || 0.43);
+    if (spec) {
+      ammo.ammo--;
+      store.write();
+    }
+    audio.cue(spec ? 'shot' : 'swing');
+    updateHud();
+    if (extras.strike({ x, z, yaw, aiming: aiming || state.aiming, armed: Boolean(spec) })) return;
+    if (life.strike(x, z, yaw, spec ? 24 : 2, spec ? 0.17 : 0.5)) return;
+    if (spec && !extras.training && !alert.level) life.offense(1, '街头开火', x, z);
+  }
+
+  function reload() {
+    const spec = weapons[weapon];
+    const ammo = store.data.arsenal[weapon];
+    if (!spec || !ammo.stock || ammo.ammo >= spec.cap) return;
+    const amount = Math.min(spec.cap - ammo.ammo, ammo.stock);
+    ammo.ammo += amount;
+    ammo.stock -= amount;
+    store.write();
+    nextStrike = clock + 0.55;
+    audio.cue('reload');
+    updateHud();
+  }
+
   function resize() {
     if (!active || stage.hidden || !stage.clientWidth || !stage.clientHeight) return;
     const width = stage.clientWidth;
@@ -414,11 +705,49 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
           ? '警方搜索 · ' + Math.ceil(alert.left) + ' 秒后消星'
           : '警车追缉';
     ui.wanted.toggleAttribute('data-searching', alert.left > 0);
-    ui.crosshair.hidden = true;
-    ui['foot-hud'].hidden = true;
+    const armed = weapon >= 0 && !flight && !driving && !swimming && !coast.riding;
+    ui.crosshair.hidden = !armed;
+    ui['foot-hud'].hidden = flight || Boolean(driving) || coast.riding;
+    const weaponName = weapons[weapon]?.name || '徒手';
+    ui['weapon-label'].textContent = weaponName;
+    setIcon(ui['weapon-icon'], weapon >= 0 ? 'target' : 'fist');
+    ui.ammo.textContent = armed
+      ? store.data.arsenal[weapon].ammo + '/' + store.data.arsenal[weapon].stock
+      : '';
+    ui.vitals.firstElementChild.style.width = health + '%';
+    ui['touch-attack-label'].textContent = coast.game ? '击球' : armed ? '开火' : '出拳';
+    stage.toggleAttribute('data-armed', armed);
+    stage.toggleAttribute('data-volley', Boolean(coast.game));
+    ui['radio-control'].hidden = !driving;
+    ui['radio-control'].title = audio.stationName;
+    if (coast.riding) {
+      ui['objective-label'].textContent = '广礐轮渡';
+      ui['objective-title'].textContent = coast.canLeave ? '已靠岸' : '横渡内海湾';
+    } else if (coast.game) {
+      ui['objective-label'].textContent = '沙滩排球';
+      ui['objective-title'].textContent = coast.game.player + ' : ' + coast.game.opponent;
+      ui['objective-detail'].textContent = coast.message();
+    } else if (race) {
+      ui['objective-label'].textContent = '海湾竞速';
+      ui['objective-title'].textContent = '检查点 ' + race.step + ' / ' + (raceRoute.length - 1);
+      ui['objective-detail'].textContent = (clock - race.start).toFixed(1) + ' 秒';
+    } else if (missions.step) {
+      ui['objective-label'].textContent =
+        missions.chapter.title + ' · ' + missions.progress.join(' / ');
+      ui['objective-title'].textContent = missions.step.label;
+      ui['objective-detail'].textContent = waypoint
+        ? '当前导航 · ' + waypoint.name
+        : '跟随金色任务标记';
+    } else if (waypoint) {
+      ui['objective-title'].textContent = waypoint.name;
+      ui['objective-detail'].textContent = '跟随地图上的金色标记';
+    } else if (!store.data.storyCompleted.includes('night') && !flight) {
+      ui['objective-detail'].textContent = '找晚钟车库的阿岚接任务';
+    }
+    stage.classList.toggle('aboard', coast.riding);
     ui['drive-hud'].hidden = !driving;
     ui['real-mode-switch'].textContent = landing ? '取消降落' : flight ? '落地' : '俯瞰';
-    ui['real-mode-switch'].hidden = Boolean(driving);
+    ui['real-mode-switch'].hidden = Boolean(driving) || swimming || coast.riding;
     ui['real-height-controls'].hidden = !flight || !touch();
     ui['game-gloss'].classList.toggle('hurt', hurtUntil > clock + 0.55);
     ui['wallet-value'].textContent = String(store.data.coins);
@@ -435,9 +764,13 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       ui['drive-status'].textContent = impact > 0.2 ? '发生碰撞' : '自由驾驶';
     }
     const canExit = driving && Math.abs(driving.speed) < 2.6;
+    const service = nearbyAction();
     const treatment = nearbyHospital() && health < 100 && !alert.level;
-    ui.interaction.hidden = !nearest && !canExit && !treatment;
-    if (treatment) {
+    ui.interaction.hidden = !nearest && !canExit && !treatment && !service;
+    if (service) {
+      ui.interaction.querySelector('button > span').textContent = service.label;
+      setIcon(ui['interaction-icon'], service.icon);
+    } else if (treatment) {
       ui.interaction.querySelector('button > span').textContent = '在医院治疗';
       setIcon(ui['interaction-icon'], 'hospital');
     } else if (nearest || canExit) {
@@ -476,6 +809,11 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         pedestrians: life.pedestrians,
         traffic: life.traffic.filter((ride) => ride.group.visible && !ride.taken).length,
         hospital: admitted,
+        chapter: missions.chapter?.id,
+        step: missions.progress?.[0],
+        ferry: coast.riding,
+        swimming,
+        radio: audio.stationName,
       });
     }
   }
@@ -587,6 +925,14 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       ctx.arc(px, pz, detailed ? 3 : 3.5, 0, Math.PI * 2);
       ctx.fill();
     }
+    const target = objectivePoint();
+    if (target) {
+      const [tx, tz] = map(target);
+      ctx.fillStyle = '#ffdc73';
+      ctx.beginPath();
+      ctx.arc(clamp(tx, 6, width - 6), clamp(tz, 6, height - 6), 4, 0, 2 * Math.PI);
+      ctx.fill();
+    }
     const [px, pz] = map([x, z]);
     ctx.save();
     ctx.translate(px, pz);
@@ -602,10 +948,20 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     ctx.restore();
   }
 
+  function objectivePoint() {
+    return race
+      ? raceRoute[race.step]
+      : waypoint?.point ||
+          missions.step?.point ||
+          (!store.data.storyCompleted.includes('night') ? points.garage : null);
+  }
+
   function locate(id = city.places[0].id) {
     const location = city.places.find((place) => place.id === id);
     if (!location) return;
     life.relocate();
+    coast.reset();
+    swimming = false;
     home = location;
     driving = null;
     flight = false;
@@ -687,14 +1043,39 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     updateHud();
   }
 
-  function action(name) {
+  function action(name, menu = false) {
+    if (name === 'radio' && active && (!paused || menu)) {
+      callbacks.toast('电台 · ' + audio.cycleStation());
+      updateHud();
+      return;
+    }
     if (!active || paused) return;
+    const service = name === 'use' ? nearbyAction() : null;
+    if (service) {
+      service.run();
+      updateHud();
+      return;
+    }
     if (name === 'pause' || name === 'map') {
       pause();
       callbacks.panel(name);
-    } else if (name === 'survey' && !driving) {
+    } else if (name === 'fire') {
+      fire();
+    } else if (name === 'reload') {
+      reload();
+    } else if (name === 'aim') {
+      aiming = !aiming;
+      updateHud();
+    } else if (name === 'switch' && !flight && !driving) {
+      const slots = [
+        -1,
+        ...weapons.map((_, index) => index).filter((index) => hasWeapon(store.data, index)),
+      ];
+      weapon = slots[(slots.indexOf(weapon) + 1) % slots.length];
+      updateHud();
+    } else if (name === 'survey' && !driving && !coast.riding && !swimming) {
       toggleFlight();
-    } else if (name === 'jump' && !flight && !driving && grounded) {
+    } else if (name === 'jump' && !flight && !driving && grounded && !coast.riding && !swimming) {
       lift = 5.9;
       grounded = false;
     } else if (
@@ -933,7 +1314,8 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       fly(dt, lateral, depth, sprint);
       return;
     }
-    const pace = sprint ? 8.5 : 4.8;
+    if (coast.riding) return;
+    const pace = swimming ? 3.6 : sprint ? 8.5 : 4.8;
     const [fx, fz] = forward(yaw);
     const norm = Math.max(1, Math.hypot(lateral, depth));
     const response = grounded ? 14 : 5;
@@ -952,7 +1334,8 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     const lastX = x;
     const lastZ = z;
     const tryWalk = (px, pz) => {
-      if (!city.canStand(px, pz)) return false;
+      if (!city.canStand(px, pz)) return city.swimAt(px, pz) && altitude < 2;
+      if (swimming) return city.clear(px, pz, 0.36) && city.height(px, pz) < 1.4;
       const surface = city.support(px, pz, altitude + 0.43);
       if (surface > altitude + 0.43) return false;
       const y = Math.max(altitude, surface);
@@ -966,6 +1349,13 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     if (moving > 0.12) {
       const target = Math.atan2(lastX - x, lastZ - z);
       facing += angleBetween(target, facing) * (1 - Math.exp(-18 * dt));
+    }
+    swimming = city.swimAt(x, z);
+    stage.classList.toggle('swimming', swimming);
+    if (swimming) {
+      altitude = -1.92 + Math.sin(clock * 4) * 0.06;
+      grounded = true;
+      return;
     }
     const floor = city.support(x, z, altitude + 0.43);
     if (grounded && floor < altitude - 0.43) grounded = false;
@@ -1011,6 +1401,52 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     const steps = Math.ceil(dt / 0.035);
     for (let i = 0; i < steps && !paused; i++) move(dt / steps);
     if (paused) return;
+    coast.update(dt, clock, ferryRider);
+    if (coast.riding) {
+      [x, z, altitude] = [ferryRider.x, ferryRider.z, coast.elevation];
+      facing = ferryRider.yaw;
+    }
+    extras.update(clock, dt, x, z);
+    if (waypoint && Math.hypot(x - waypoint.point[0], z - waypoint.point[1]) < 8) waypoint = null;
+    if (!flight && !coast.riding) missions.update(x, z, driving, swimming);
+    if (
+      race &&
+      driving &&
+      Math.hypot(x - raceRoute[race.step][0], z - raceRoute[race.step][1]) < 18
+    ) {
+      audio.cue('mark');
+      if (++race.step === raceRoute.length) {
+        const elapsed = clock - race.start;
+        const best = store.data.best === null || elapsed < store.data.best;
+        if (best) store.data.best = elapsed;
+        store.data.coins += 90;
+        store.write();
+        race = null;
+        callbacks.result('race', { elapsed, best, reward: 90 });
+      }
+    }
+    if (coast.game && coast.status === 'over' && coast.game.player === 5 && !matchPaid) {
+      matchPaid = true;
+      store.data.coins += 25;
+      store.write();
+      callbacks.toast('排球获胜 · +25 潮票');
+    }
+    if (paused) return;
+    const target = objectivePoint();
+    beacon.visible = Boolean(target) && Math.hypot(x - target[0], z - target[1]) < 500;
+    if (beacon.visible) {
+      beacon.position.set(target[0], city.height(...target), target[1]);
+      diamond.rotation.y = clock;
+    }
+    const step = missions.step || missions.nextChapter?.steps[0];
+    contacts.group.visible = Boolean(
+      step?.type === 'talk' && Math.hypot(x - step.point[0], z - step.point[1]) < 50,
+    );
+    if (contacts.group.visible) {
+      contacts.group.position.set(step.point[0], city.height(...step.point) + 0.1, step.point[1]);
+      contacts.group.rotation.y = Math.atan2(step.point[0] - x, step.point[1] - z);
+      contacts.animate({ speed: 0, dt });
+    }
     life.update(dt, { x, z, altitude }, driving, rides);
     if (paused) return;
     if (Math.floor(clock * 8) !== Math.floor((clock - dt) * 8)) {
@@ -1022,7 +1458,12 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     const pavement = localSurface <= city.height(x, z) + 0.015 ? city.pavementHeight(x, z) : 0;
     if (pedestrian.group.visible) {
       pedestrian.group.position.set(x, altitude + pavement + 0.012, z);
-      pedestrian.group.rotation.set(driving?.pitch || 0, facing, driving?.roll || 0, 'YXZ');
+      pedestrian.group.rotation.set(
+        swimming ? 1.07 : driving?.pitch || 0,
+        facing,
+        driving?.roll || 0,
+        'YXZ',
+      );
       pedestrian.animate({
         speed: riding ? 0 : moving,
         airborne: !grounded,
@@ -1074,8 +1515,45 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     }
   });
 
+  function choose(mode, selection) {
+    if (mode === 'garage') prepareGarageCar();
+    if (mode === 'story') {
+      missions.select(selection);
+      waypoint = null;
+    } else {
+      const id = selection || shortcuts[mode];
+      const place = city.places.find((entry) => entry.id === id);
+      if (place) waypoint = { ...place, point: place.arrival || place.point };
+      if (
+        mode === 'race' ||
+        mode === 'beach' ||
+        mode === 'ferry' ||
+        mode === 'training' ||
+        mode === 'gang' ||
+        mode === 'garage'
+      ) {
+        callbacks.toast('已标记 · ' + (place?.name || '目的地'));
+      }
+    }
+    pause(false);
+    updateHud();
+  }
+
   return {
-    real: true,
+    get running() {
+      return active;
+    },
+    get health() {
+      return health;
+    },
+    buyMeal,
+    choose,
+    navigate(id) {
+      choose('free', id);
+    },
+    retry() {
+      choose('free');
+    },
     get places() {
       return city.places;
     },
@@ -1086,29 +1564,23 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       return Boolean(cinematic);
     },
     focusCinematic,
-    launch() {
+    launch(mode, selection) {
       active = true;
       admitted = false;
       health = 100;
       hurtUntil = 0;
       life.reset();
       sceneTile = '';
-      for (const ride of rides) {
-        [ride.x, ride.z] = city.spawn(
-          [ride.point[0] + 14 + ride.index * 7, ride.point[1] + 11 + ride.index * 12],
-          ride.spec.size,
-        );
-        ride.yaw = city.roadAngle(ride.x, ride.z);
-        ride.speed = ride.pitch = ride.roll = 0;
-        syncRide(ride);
-      }
+      prepareGarageCar();
+      for (const ride of rides) placeCar(ride);
       locate();
+      missions.resume();
       resize();
       if (store.data.hospitalLoss !== null) arriveHospital('继续上次住院');
       else if (!openingPlayed) {
         openingPlayed = true;
-        playCinematic(openingShots, () => pause(false));
-      } else pause(false);
+        playCinematic(openingShots, () => choose(mode, selection));
+      } else choose(mode, selection);
       if (!frame) frame = requestAnimationFrame(animate);
     },
     view(value) {

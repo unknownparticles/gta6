@@ -1,6 +1,8 @@
 import * as T from 'three';
 import { addCrossings, addHeroLandmarks, crossings } from './real-landmarks.js';
 import { cityDepthOffset, cityLayers } from './real-materials.js';
+import { realLandmarks } from './city-directory.js';
+import { makeVenues } from './city-venues.js';
 import { addRetroTrees } from './retro-street.js';
 
 const cells = 240;
@@ -11,22 +13,6 @@ const palette = [
 const arcadePalette = [
   0xf3d9b4, 0xeab2a7, 0xaacbcc, 0xc89098, 0xe9d6b4, 0xe5c9b2, 0xadc4df, 0xbd99ab, 0xe4bda5,
   0xabcfbd, 0xead1b8,
-];
-const landmarks = [
-  ['pavilion', '小公园中山纪念亭', '532956287', [-2815, -1426]],
-  ['department-store', '南生百货大楼', '532956292', [-2837, -1390]],
-  ['post-office', '邮政总局旧址', '532956280', [-2797, -1180]],
-  ['tv', '电视塔', '582827032', [-2407, -3708]],
-  ['museum', '潮汕历史文化博览中心', '1077683036', [1440, 2308]],
-  ['square', '人民广场', '527201447', [-1861, -1072]],
-  ['north-ferry', '广场轮渡站', '527264674', [-1612, -947]],
-  ['south-ferry', '礐石轮渡站', '528328082', [-2533, 336]],
-  ['queshi', '礐石大桥', '583148030', [-3786, 32]],
-  ['bay-bridge', '海湾大桥', '583148033', [5096, 925]],
-  ['diving', '濠江跳水馆', '534229497', [-22, 1960]],
-  ['mountain', '礐石山', '527201452', [-2200, 1290]],
-  ['east', '东海岸大道', null, [6025, -1070]],
-  ['hospital', 'S城医院', null, [-800, -1502]],
 ];
 
 const key = (x, z) => Math.floor(x / cells) + ':' + Math.floor(z / cells);
@@ -83,7 +69,7 @@ export function createRealCity(scene, data, elevation, materials) {
   const buildingIndex = new Map();
   const land = data.land.map((part) => part.map(pairs));
   const piers = data.piers.map((part) => part.map(pairs));
-  const places = landmarks.map(([id, name, source, fallback]) => ({
+  const places = realLandmarks.map(([id, name, source, fallback]) => ({
     id,
     name,
     point: data.places[source] || fallback,
@@ -91,6 +77,7 @@ export function createRealCity(scene, data, elevation, materials) {
   const buffers = new Map();
   const sceneryChunks = [];
   const arcades = [];
+  const buildingFronts = [];
   const [x1, z1, x2, z2] = data.bounds;
   const globe = new T.Group();
   scene.add(globe);
@@ -359,10 +346,8 @@ export function createRealCity(scene, data, elevation, materials) {
       triangle(top, a, b, c, shade),
     );
     const detailedArcade = oldTown && Math.hypot(centerX - plazaX, centerZ - plazaZ) < 145;
-    const outward =
-      detailedArcade && T.ShapeUtils.isClockWise(outer.map(([x, z]) => new T.Vector2(x, z)))
-        ? 1
-        : -1;
+    const winding = T.ShapeUtils.isClockWise(outer.map(([x, z]) => new T.Vector2(x, z))) ? 1 : -1;
+    const outward = winding;
     const floors = Math.max(1, Math.min(80, levels));
     for (const [ringIndex, ring] of rings.entries()) {
       for (let index = 0; index < ring.length; index++) {
@@ -370,6 +355,61 @@ export function createRealCity(scene, data, elevation, materials) {
         const [bx, bz] = ring[(index + 1) % ring.length];
         const length = Math.hypot(bx - ax, bz - az);
         if (length < 0.05) continue;
+        if (ringIndex === 0 && length > 4.2 && height > 3.8 && !offset) {
+          const side = winding;
+          buildingFronts.push({
+            id: buildingFronts.length,
+            x: (ax + bx) * 0.5,
+            z: (az + bz) * 0.5,
+            nx: (side * (az - bz)) / length,
+            nz: (side * (bx - ax)) / length,
+            base,
+            length,
+          });
+        }
+
+        if (detailedArcade && ringIndex === 0 && length > 5.2 && height > 7) {
+          const roofBand = bucket(centerX, centerZ, 'concrete');
+          const nx = (winding * (az - bz)) / length;
+          const nz = (winding * (bx - ax)) / length;
+          const sill = Math.min(0.63, length * 0.06);
+          const top = roofHeight + 0.25;
+          quad(
+            roofBand,
+            [ax + nx * sill, roofHeight - 0.32, az + nz * sill],
+            [bx + nx * sill, roofHeight - 0.32, bz + nz * sill],
+            [bx + nx * sill, top, bz + nz * sill],
+            [ax + nx * sill, top, az + nz * sill],
+            0xdfc6a9,
+          );
+          quad(
+            roofBand,
+            [ax + nx * sill, top, az + nz * sill],
+            [bx + nx * sill, top, bz + nz * sill],
+            [bx, top, bz],
+            [ax, top, az],
+            0xe5d2b8,
+          );
+          if (paletteIndex % 3 === 0) {
+            const span = Math.min(length / 3, 3.1);
+            const edge = (t, y, d = 0.14) => [
+              ax + (bx - ax) * t + nx * d,
+              y,
+              az + (bz - az) * t + nz * d,
+            ];
+            const l = 0.5 - span / length / 2;
+            const r = 0.5 + span / length / 2;
+            triangle(roofBand, edge(l, top), edge(r, top), edge(0.5, top + 1.15), 0xe9d1b3);
+            quad(
+              roofBand,
+              edge(l, top - 0.12, 0.23),
+              edge(r, top - 0.12, 0.23),
+              edge(r, top + 0.08, 0.23),
+              edge(l, top + 0.08, 0.23),
+              0xd29a7c,
+            );
+          }
+        }
         const plain = length < 3.4 || height - offset < 4;
         const frontage = oldTown && ringIndex === 0 && length > 5 && floors > 1 && !offset;
         const facade = oldTown ? 'historic' : height - offset >= 27 ? 'modern' : 'residence';
@@ -701,6 +741,20 @@ export function createRealCity(scene, data, elevation, materials) {
   const hospitalGate = spawn(hospital.point);
   hospital.arrival = hospitalGate;
   markHospital(globe, hospital, height, clear);
+  const venues = makeVenues(globe, buildingFronts, { clear, spawn, height });
+  places.push(...venues.map(({ id, name, point }) => ({ id, name, point, arrival: point })));
+
+  function bridgePoint(id, z) {
+    const road = roads.find(
+      (road) =>
+        road.crossing?.id === id &&
+        z >= Math.min(road.az, road.bz) &&
+        z <= Math.max(road.az, road.bz),
+    );
+    return road
+      ? [road.ax + (road.dx * (z - road.az)) / road.dz, z]
+      : places.find((place) => place.id === id).point;
+  }
 
   return {
     updateVisibility(x, z, range) {
@@ -710,6 +764,11 @@ export function createRealCity(scene, data, elevation, materials) {
           Math.abs(center.x - x) < range + radius && Math.abs(center.z - z) < range + radius;
       }
     },
+    venues,
+    swimAt(x, z) {
+      return x > x1 + 30 && x < x2 - 30 && z > z1 + 30 && z < z2 - 30 && !canStand(x, z);
+    },
+    bridgePoint,
     blocked,
     support,
     pavementHeight,

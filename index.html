@@ -120,11 +120,11 @@
           <i data-icon="ferry"></i><span><b>广礐轮渡</b><small>一湾两岸</small></span>
         </button>
         <button id="free-start" class="launch-main" data-start="real">
-          <i data-icon="gamepad"></i><span><b>实景自由巡游</b><small>从小公园出发</small></span
+          <i data-icon="gamepad"></i><span><b>进入 S 城</b><small>从小公园出发</small></span
           ><span class="launch-arrow">»</span>
         </button>
         <button class="launch-mission" data-open="tasks">
-          <i data-icon="flag"></i><span><b>剧情模式</b><small>夜班急件</small></span>
+          <i data-icon="flag"></i><span><b>任务中心</b><small>内海湾往事</small></span>
         </button>
       </div>
       <footer class="dock">
@@ -141,8 +141,7 @@
       </footer>
     </main>
     <section id="play" class="play" aria-label="S城" hidden>
-      <canvas id="world" tabindex="0" aria-label="三维游戏画面"></canvas>
-      <canvas id="real-world" tabindex="0" aria-label="内海湾实景三维画面" hidden></canvas>
+      <canvas id="real-world" tabindex="0" aria-label="内海湾实景三维画面"></canvas>
       <div class="hud">
         <div class="hud-location">
           <span id="district-mark">02</span>
@@ -153,6 +152,7 @@
           ><span id="objective-detail"></span>
         </div>
         <div class="hud-actions">
+          <button type="button" id="radio-control" class="square real-mode-switch" data-game="radio" aria-label="切换电台" hidden>电台</button>
           <button type="button" id="real-mode-switch" class="square real-mode-switch" data-game="survey" hidden>俯瞰</button>
           <button type="button" class="square" data-game="map" aria-label="打开地图">
             <i data-icon="map"></i></button

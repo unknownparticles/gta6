@@ -331,6 +331,31 @@ export function realStreetLife({ scene, city, compact, createCar, syncCar, notif
     update,
     reset,
     relocate,
+    strike(x, z, yaw, range, aim) {
+      const player = { x, z };
+      const candidates = people
+        .filter((person) => {
+          if (!person.group.visible || gap(person, player) > range) return false;
+          const delta = heading(player, person) - yaw;
+          return Math.abs(Math.atan2(Math.sin(delta), Math.cos(delta))) <= aim;
+        })
+        .sort((a, b) => gap(a, player) - gap(b, player));
+      const target = candidates[0];
+      if (!target) return false;
+      if (
+        !Array.from({ length: 7 }, (_, index) => (index + 1) / 8).every((t) => {
+          const px = x + (target.x - x) * t;
+          const pz = z + (target.z - z) * t;
+          const height = city.height(px, pz);
+          return !city.blocked(px, pz, height + 0.8, height + 1.8, 0.12);
+        })
+      )
+        return false;
+      target.yaw = heading(player, target);
+      target.remaining = 18;
+      offense(1, '街头冲突', x, z);
+      return true;
+    },
     get pedestrians() {
       return people.filter((person) => person.group.visible).length;
     },

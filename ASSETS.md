@@ -41,6 +41,7 @@
 | --- | --- | --- |
 | `public/media/models/` 中的车辆、仓库、集装箱、路灯、护栏和调色板 | Kenney，CC0。选用 Car Kit 3.1、City Kit Industrial 2.0 和 City Kit Roads 中的部分 GLB。调色板分包命名并修改对应模型的贴图路径，许可文本随模型分发。 | [Car Kit](https://opengameart.org/content/car-kit)、[City Kit Industrial](https://opengameart.org/comment/113019)、[City Kit Roads](https://kenney.nl/assets/city-kit-roads) |
 | `public/media/models/taxi.glb`、`suv.glb`、`delivery.glb` | Kenney，CC0。调整 GLB 的贴图路径，复用现有车身调色板。 | [Kenney Car Kit](https://kenney.nl/assets/car-kit) |
+| `public/media/tide-fm.mp3`、`public/media/harbor-fm.mp3` | 原创合成器、鼓机和贝斯配乐，分别用于潮线 FM 和夜港 FM。 | `scripts/compose-city-radio.py` |
 | `public/media/synth-wave.mp3` | Alex McCulloch，CC0。取原曲 00:11 起的 36 秒，加淡入淡出，以 96 kbps 发布。 | [Synth Wave](https://opengameart.org/content/synth-wave-alex-mcculloch-august-172021) |
 | `public/media/harbor.webp`、`public/media/garage.webp`、`public/media/icon.png` | 大厅封面和车库预览由本作海滨场景和车模渲染，站点图标截取自车库预览。 | [素材渲染页面](scripts/poster.html) |
 | `public/media/shantou-bay.webp` | 从游戏内的内海湾场景渲染的新大厅封面。模型、地标和布局采用游戏中的抽象化设计。 | [封面渲染页面](scripts/poster.html) |

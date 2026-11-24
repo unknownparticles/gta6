@@ -1,9 +1,6 @@
 import * as T from 'three';
-import { beach, ferryStops } from './city-layout.js';
+import { beach as originalBeach, ferryStops as originalStops } from './city-layout.js';
 
-const minute = 54;
-const layover = 9;
-const transit = 18;
 const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
 
 function solid(w, h, d, color, x, y, z) {
@@ -12,7 +9,19 @@ function solid(w, h, d, color, x, y, z) {
   return mesh;
 }
 
-export function createCoastActivities(scene, personModel) {
+export function createCoastActivities(
+  scene,
+  personModel,
+  {
+    beach = originalBeach,
+    ferryStops = originalStops,
+    seaLevel = -0.48,
+    transit = 18,
+    layover = 9,
+    buildPiers = true,
+  } = {},
+) {
+  const minute = 2 * (layover + transit);
   const ferry = new T.Group();
   ferry.add(
     solid(7, 1.1, 17, 0x173650, 0, 0.02, 0),
@@ -22,16 +31,19 @@ export function createCoastActivities(scene, personModel) {
   );
   for (const side of [-1, 1]) {
     ferry.add(solid(0.15, 0.5, 16.4, 0x87d5cf, side * 3.45, 0.91, 0));
-    for (const z of [-5, -3, -1, 0.4]) ferry.add(solid(0.1, 0.52, 0.92, 0x477998, side * 2.53, 2.0, z));
+    for (const z of [-5, -3, -1, 0.4])
+      ferry.add(solid(0.1, 0.52, 0.92, 0x477998, side * 2.53, 2.0, z));
   }
   ferry.add(solid(3, 0.45, 0.45, 0x798097, 0, 0.91, 6.5));
   scene.add(ferry);
-  for (const stop of ferryStops) {
+  for (const stop of buildPiers ? ferryStops : []) {
     const center = (stop.pier[1] + stop.berth[1]) / 2;
     scene.add(solid(5.6, 0.26, 15.2, 0x8f6d61, stop.pier[0], -0.11, center));
     for (const side of [-1, 1])
       for (const offset of [-6, -1, 4]) {
-        scene.add(solid(0.28, 1.1, 0.28, 0xe5bc83, stop.pier[0] + side * 2.63, 0.36, center + offset));
+        scene.add(
+          solid(0.28, 1.1, 0.28, 0xe5bc83, stop.pier[0] + side * 2.63, 0.36, center + offset),
+        );
       }
   }
   let clock = 0;
@@ -60,7 +72,8 @@ export function createCoastActivities(scene, personModel) {
     court.add(solid(14, 0.014, 0.14, 0xfcf4e3, cx, 0.105, cz + side * 11.5));
     court.add(solid(0.18, 2.7, 0.18, 0xeee0c8, cx + side * 7.3, 1.36, cz));
   }
-  for (let x = -7; x < 7.1; x += 0.6) court.add(solid(0.025, 0.89, 0.03, 0xd7e1dc, cx + x, 1.98, cz));
+  for (let x = -7; x < 7.1; x += 0.6)
+    court.add(solid(0.025, 0.89, 0.03, 0xd7e1dc, cx + x, 1.98, cz));
   for (let y = 1.55; y < 2.52; y += 0.2) court.add(solid(14.3, 0.026, 0.03, 0xd7e1dc, cx, y, cz));
   opponent.group.position.set(cx, 0, cz - 8);
   opponent.group.rotation.y = Math.PI;
@@ -109,7 +122,7 @@ export function createCoastActivities(scene, personModel) {
     const eased = t * t * (3 - 2 * t);
     ferry.position.set(
       T.MathUtils.lerp(a[0], b[0], eased),
-      -0.48 + 0.035 * Math.sin(time * 2.4),
+      seaLevel + 0.035 * Math.sin(time * 2.4),
       T.MathUtils.lerp(a[1], b[1], eased),
     );
     ferry.rotation.y = Math.atan2(a[0] - b[0], a[1] - b[1]);

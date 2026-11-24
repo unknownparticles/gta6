@@ -1,10 +1,10 @@
 import { chapters, chapterById, chapterUnlocked, welfareRewards } from './story.js';
-import { landmarks } from './city-layout.js';
+import { realLandmarks } from './city-directory.js';
+import { venues } from './city-venues-data.js';
 import './style.css';
 import { audioSystem } from './audio.js';
 import { cars, days, packs, paints, weapons } from './data.js';
 import { icons } from './icons.js';
-import { drawMap } from './map.js';
 import { eateries } from './neighborhood.js';
 import {
   buyAmmo,
@@ -40,8 +40,6 @@ const messages = [
   'VIP 车手专享和游客完全相同的海风。',
 ];
 let game;
-let classicGame;
-let realGame;
 let loading = false;
 let blocked = false;
 let view = '';
@@ -270,25 +268,15 @@ const command = (name) => 'data-action="' + name + '"';
 const primary = 'hot';
 
 function landmarkMap() {
+  const places = game?.places || [
+    ...realLandmarks.map(([id, name]) => ({ id, name })),
+    ...venues.map(({ id, name }) => ({ id, name })),
+  ];
   return (
-    '<canvas class="map-full" width="520" height="520" aria-label="S城地标地图"></canvas>' +
-    '<div class="activity-grid landmarks">' +
-    landmarks
-      .map(
-        ({ id, name, description, color, icon: mark }) =>
-          '<article class="tile"><b style="color:' +
-          color +
-          '">' +
-          icon(mark) +
-          ' ' +
-          name +
-          '</b><small>' +
-          description +
-          '</small>' +
-          button('导航到' + name, command('navigate') + ' data-id="' + id + '"') +
-          '</article>',
-      )
-      .join('') +
+    (game ? '<canvas class="map-full real-map" width="660" height="320" aria-label="内海湾实景地图"></canvas>' : '') +
+    '<div class="actions real-places">' +
+    places.map(({ id, name }) => button('导航到' + text(name),
+      command('navigate') + ' data-id="' + id + '"')).join('') +
     '</div>'
   );
 }
@@ -458,7 +446,7 @@ function renderPanel(name, data) {
           .map((chapter, index) => {
             const done = save.storyCompleted.includes(chapter.id);
             const unlocked = chapterUnlocked(save, chapter.id);
-            const resume = save.storyCheckpoint?.id === chapter.id && save.storyCheckpoint.step > 0;
+            const resume = save.storyCheckpoint?.id === chapter.id;
             return (
               '<article class="tile chapter-tile"><div><small class="chapter-area">第 ' +
               (index + 1) +
@@ -472,7 +460,7 @@ function renderPanel(name, data) {
               chapter.reward +
               ' 潮票</small>' +
               button(
-                unlocked ? (resume ? '继续章节' : done ? '重玩章节' : '开始章节') : '待解锁',
+                unlocked ? (resume ? '继续章节' : done ? '重玩章节' : '追踪任务') : '待解锁',
                 command('story') +
                   ' data-id="' +
                   chapter.id +
@@ -652,7 +640,7 @@ function renderPanel(name, data) {
           )
           .join('') +
         '</div><p>停车场可以试驾厢式车，车库旁可以修复车辆。</p><div class="actions">' +
-        button('用当前车辆出发', 'data-start="free"', primary) +
+        button('前往晚钟车库', 'data-start="garage"', primary) +
         '</div>'
       );
     },
@@ -769,7 +757,7 @@ function renderPanel(name, data) {
       );
     },
     help() {
-      return '<h3>电脑键鼠</h3><p><kbd>W A S D</kbd> 步行或驾驶　<kbd>E</kbd> 交互、拾取、抢车或上下车　<kbd>Shift</kbd> 奔跑　<kbd>空格</kbd> 跳跃 / 手刹　<kbd>V</kbd> 切换倒挡</p><p>移动鼠标即可转动镜头，双击画面可锁定鼠标。左键或 <kbd>Enter</kbd> 出拳或开火，右键瞄准，<kbd>Q</kbd> 在徒手和已解锁武器间切换，<kbd>R</kbd> 装填。</p><p><kbd>M</kbd> 地图　<kbd>Esc</kbd> 暂停　长按 <kbd>T</kbd> 脱困</p><h3>手机与平板横屏</h3><p>左手摇杆移动或转向，右侧空白区拖动视角。用右下的攻击按钮出拳或开火，靠近街车后点击抢车提示。驾驶时可以同时转向和踩油门。停稳后切换 D / R。海边可以游泳，轮渡靠岸后按交互上船或下船。排球用攻击键发球和回球。</p><h3>警方通缉</h3><p>粉色标记是巡逻车。脱离游戏内的视野后会进入搜索倒计时，重新被发现会暂停消星。</p>';
+      return '<h3>电脑键鼠</h3><p><kbd>W A S D</kbd> 步行或驾驶　<kbd>E</kbd> 交互、拾取、抢车或上下车　<kbd>Shift</kbd> 奔跑　<kbd>空格</kbd> 跳跃 / 手刹　<kbd>V</kbd> 切换倒挡</p><p>移动鼠标即可转动镜头，点击画面可锁定鼠标。左键或 <kbd>Enter</kbd> 出拳或开火，右键瞄准，<kbd>Q</kbd> 在徒手和已解锁武器间切换，<kbd>R</kbd> 装填。</p><p><kbd>M</kbd> 地图　<kbd>F</kbd> 俯瞰　<kbd>B</kbd> 换电台　<kbd>Esc</kbd> 暂停　长按 <kbd>T</kbd> 脱困</p><h3>手机与平板横屏</h3><p>左手摇杆移动或转向，右侧空白区拖动视角。用右下的攻击按钮出拳或开火，靠近街车后点击抢车提示。驾驶时可以同时转向和踩油门。停稳后切换 D / R。海边可以游泳，轮渡靠岸后按交互上船或下船。排球用攻击键发球和回球。</p><h3>警方通缉</h3><p>粉色标记是巡逻车。脱离游戏内的视野后会进入搜索倒计时，重新被发现会暂停消星。</p>';
     },
     notice() {
       return messages
@@ -782,7 +770,6 @@ function renderPanel(name, data) {
     more() {
       return (
         '<div class="actions">' +
-        button('经典自由模式', 'data-start="free"') +
         [
           ['武器', 'armory'],
           ['车库', 'garage'],
@@ -849,6 +836,7 @@ function renderPanel(name, data) {
         button('全图', go('map')) +
         button('任务中心', go('tasks')) +
         button('设置', go('settings')) +
+        button('切换电台', command('station')) +
         button('操作', go('help')) +
         button('脱困', command('recover')) +
         button('返回大厅', command('lobby')) +
@@ -856,7 +844,7 @@ function renderPanel(name, data) {
       );
     },
     map() {
-      if (game?.real) {
+      if (game) {
         return '<canvas class="map-full real-map" width="660" height="320" aria-label="内海湾实景地图"></canvas>' +
           '<a class="map-source" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>' +
           '<div class="actions real-places">' +
@@ -864,7 +852,7 @@ function renderPanel(name, data) {
           '</div>' + button('继续巡游', command('resume'), primary);
       }
       return (
-        '<p>青色箭头是当前位置，金色虚线是导航路线。碗标记是食店，绿色两轮标记是可骑的电动车。</p>' +
+        '<p>青色箭头是当前位置，金色标记是任务或目的地。</p>' +
         button('继续游戏', command('resume'), primary) +
         landmarkMap()
       );
@@ -960,10 +948,7 @@ function renderPanel(name, data) {
   icons(content);
   if (name === 'register') $('#nickname').value = save.nick;
   const map = content.querySelector('.map-full');
-  if (map) {
-    if (game && !play.hidden) game.drawMap(map, true);
-    else drawMap(map, {}, true);
-  }
+  if (map && game) game.drawMap(map, true);
 }
 
 async function launch(mode, selection) {
@@ -973,13 +958,9 @@ async function launch(mode, selection) {
   try {
     open('loading');
     await new Promise((resolve) => requestAnimationFrame(resolve));
-    const real = mode === 'real';
-    let next = real ? realGame : classicGame;
-    if (!next) {
-      const create = real
-        ? (await import('./real-drive.js')).createRealDrive
-        : (await import('./game.js')).createGame;
-      next = await create({
+    if (!game) {
+      const { createRealDrive } = await import('./real-drive.js');
+      game = await createRealDrive({
         stage: play,
         touch,
         store,
@@ -1000,24 +981,17 @@ async function launch(mode, selection) {
           },
         },
       });
-      if (real) realGame = next;
-      else classicGame = next;
     }
-    if (game && next !== game) game.reset();
-    game = next;
-    play.classList.toggle('real-mode', real);
-    $('#world').hidden = real;
-    $('#real-world').hidden = !real;
-    $('#real-mode-switch').hidden = !real;
-    $('#real-height-controls').hidden = true;
+    play.classList.add('real-mode');
     play.hidden = false;
     lobby.hidden = true;
     game.view(!blocked);
     loading = false;
     view = '';
     panel.close();
-    game.launch(mode, selection);
-    if (mode !== 'story' && selection) game.navigate(selection);
+    delete play.dataset.dialogue;
+    if (game.running) game.choose(mode, selection);
+    else game.launch(mode, selection);
     rotationState();
     if (blocked) game.view(false);
   } catch (error) {
@@ -1045,8 +1019,11 @@ function returnLobby() {
 
 function applyAction(action, id) {
   switch (action) {
+    case 'station':
+      game?.action('radio', true);
+      break;
     case 'real-place':
-      if (game?.real && view === 'map') {
+      if (game && view === 'map') {
         if (game.locate(id)) closePanel();
       }
       break;

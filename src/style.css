@@ -786,9 +786,9 @@ a {
   padding-inline: 7px;
   font-size: 0.78rem;
 }
-.real-mode .foot-controls > :not([data-hold='sprint']):not(.jump-button),
-.real-mode[data-flight] .foot-controls .jump-button,
-.real-mode[data-flight] .foot-controls [data-hold='sprint'] {
+.real-mode:not([data-armed]) .foot-controls :is([data-game='reload'], [data-game='aim']),
+.real-mode[data-flight] .foot-controls,
+.real-mode.swimming .foot-controls > :not([data-hold='sprint']) {
   display: none;
 }
 .map-full.real-map {
