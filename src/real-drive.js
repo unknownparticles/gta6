@@ -4,6 +4,7 @@ import { drive } from './driving.js';
 import { setIcon } from './icons.js';
 import { createInput } from './input.js';
 import { createRealCity } from './real-city.js';
+import { loadRealMaterials } from './real-materials.js';
 import { loadModels, personModel, vehicleModel } from './world.js';
 
 const clamp = T.MathUtils.clamp;
@@ -18,7 +19,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     return response.json();
   }
   const [data, elevation] = await Promise.all([
-    readMap('inner-bay.json'),
+    readMap('inner-bay-v2.json'),
     readMap('inner-bay-elevation.json'),
     loadModels(),
   ]);
@@ -38,7 +39,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   const sun = new T.DirectionalLight(0xffe1be, 1.75);
   sun.position.set(-480, 680, 270);
   scene.add(sun);
-  const city = createRealCity(scene, data, elevation);
+  const city = createRealCity(scene, data, elevation, await loadRealMaterials(renderer));
   const camera = new T.PerspectiveCamera(62, 1, 0.28, 14000);
   const focus = new T.Vector3();
   const desired = new T.Vector3();
@@ -293,7 +294,6 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     pitch = 0.09;
     camera.near = 0.28;
     camera.updateProjectionMatrix();
-    city.detail(x, z, low());
     updateHud();
     updateCamera(true);
   }
@@ -457,7 +457,6 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     clock += dt;
     move(dt);
     if (Math.floor(clock * 8) !== Math.floor((clock - dt) * 8)) {
-      city.detail(x, z, low());
       updateHud();
     }
     pedestrian.group.visible = !flight && (!driving || driving.type === 'ebike');

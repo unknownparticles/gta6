@@ -44,3 +44,4 @@
 | `public/media/harbor.webp`、`public/media/garage.webp`、`public/media/icon.png` | 大厅封面和车库预览由本作海滨场景和车模渲染，站点图标截取自车库预览。 | [素材渲染页面](scripts/poster.html) |
 | `public/media/shantou-bay.webp` | 从游戏内的内海湾场景渲染的新大厅封面。模型、地标和布局采用游戏中的抽象化设计。 | [封面渲染页面](scripts/poster.html) |
 | `public/media/shantou-lobby.webp` | 游戏内人民广场、跨湾大桥、原创车手角色和车模渲染。 | [封面渲染页面](scripts/poster.html?lobby) |
+| `public/media/streets/` | Poly Haven 的 CC0 沥青、磨损混凝土和地砖。将颜色贴图转成灰度并调整亮度，再压缩为 256 像素的 WebP。旧城窗格与商铺立面在游戏内绘制。 | [Asphalt 02](https://polyhaven.com/a/asphalt_02)、[Concrete Floor Worn 001](https://polyhaven.com/a/concrete_floor_worn_001)、[Concrete Tiles](https://polyhaven.com/a/concrete_tiles)、[Poly Haven 授权](https://polyhaven.com/license) |

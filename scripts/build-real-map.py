@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 
 from shapely.geometry import LineString, Point, Polygon, box
 from shapely.ops import polygonize, unary_union
+from shapely.strtree import STRtree
 
 ORIGIN = (116.697, 23.345)
 BOUNDS = (116.638, 23.320, 116.765, 23.369)
@@ -42,6 +43,61 @@ def geometries(shape, kind):
 
 def points(sequence):
     return [round(value, 1) for point in sequence for value in point]
+
+
+def rings(polygon):
+    return [points(polygon.exterior.coords[:-1]),
+            *[points(hole.coords[:-1]) for hole in polygon.interiors]]
+
+
+def tags(element):
+    return {tag.attrib['k']: tag.attrib['v'] for tag in element.findall('tag')}
+
+
+def outline(way, nodes):
+    refs = [nd.attrib['ref'] for nd in way.findall('nd')]
+    return [nodes[ref] for ref in refs] if len(refs) >= 2 and all(ref in nodes for ref in refs) else []
+
+
+def buildings_for_scene(features, land, piers):
+    # Prefer mapped parts and measured heights when multiple footprints occupy the same space.
+    def priority(item):
+        _, tag, polygon = item
+        return ('building:part' in tag, bool(tag.get('height') or tag.get('building:levels')), polygon.area)
+
+    ranked = sorted(features, key=priority, reverse=True)
+    tree = STRtree([polygon for _, _, polygon in ranked])
+    footprints = []
+    levels_at = [number(tag.get('min_height', '')) or (number(tag.get('building:min_level', '')) or 0) * 3.15
+                 for _, tag, _ in ranked]
+    docks = unary_union(piers)
+    for index, (identifier, tag, polygon) in enumerate(ranked):
+        existing = polygon
+        for other in tree.query(polygon, predicate='intersects'):
+            if other >= index or abs(levels_at[index] - levels_at[other]) >= 2:
+                continue
+            conflict = ranked[other][2]
+            intersection = existing.intersection(conflict).area
+            if intersection > 1 and intersection / min(polygon.area, conflict.area) > 0.1:
+                existing = existing.difference(conflict)
+        height = number(tag.get('height', tag.get('building:height', '')))
+        levels = number(tag.get('building:levels', ''))
+        base = levels_at[index]
+        for part in geometries(existing.simplify(0.35), 'Polygon'):
+            if part.area < 9:
+                continue
+            center = part.representative_point()
+            old_town = -3500 < center.x < -1700 and -1900 < center.y < -850
+            estimate = (8 if old_town else 11) + int(identifier) % (5 if old_town else 14)
+            top = round(min(300, max(base + 2.8, height or (base + (levels * 3.15 if levels else estimate)))), 1)
+            wet = part.intersection(land).area < part.area * 0.6
+            # Shore buildings and wharf buildings have a visible foundation meeting the quay.
+            waterfront = wet and (part.distance(land) < 55 or part.distance(docks) < 32)
+            if wet and not waterfront and not base:
+                continue
+            footprints.append([top, int(identifier) % 11, rings(part), round(base, 1),
+                               int(levels or round((top - base) / 3.1)), int(waterfront)])
+    return footprints
 
 
 def number(value):
@@ -79,9 +135,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('extract', type=Path, nargs=3)
     parser.add_argument('--terrain', type=Path, required=True)
-    parser.add_argument('--output', type=Path, default=Path('public/maps/inner-bay.json'))
+    parser.add_argument('--output', type=Path, default=Path('public/maps/inner-bay-v2.json'))
     args = parser.parse_args()
-    nodes, ways, trees = {}, {}, {}
+    nodes, ways, relations, trees = {}, {}, {}, {}
     for filename in args.extract:
         root = ET.parse(filename).getroot()
         nodes.update((n.attrib['id'], project(float(n.attrib['lon']), float(n.attrib['lat'])))
@@ -90,18 +146,41 @@ def main():
             if any(tag.get('k') == 'natural' and tag.get('v') == 'tree' for tag in node.findall('tag')):
                 trees[node.attrib['id']] = nodes[node.attrib['id']]
         ways.update((w.attrib['id'], w) for w in root.findall('way'))
+        relations.update((r.attrib['id'], r) for r in root.findall('relation'))
 
     west, south, east, north = BOUNDS
     min_x, min_z = project(west, north)
     max_x, max_z = project(east, south)
     clip = box(min_x, min_z, max_x, max_z)
-    coast, inland_water, roads, buildings, places, green = [], [], [], [], {}, []
-    for identifier, way in ways.items():
-        tag = {t.attrib['k']: t.attrib['v'] for t in way.findall('tag')}
-        refs = [nd.attrib['ref'] for nd in way.findall('nd')]
-        if len(refs) < 2 or any(ref not in nodes for ref in refs):
+    coast, inland_water, roads, features, places, green, piers = [], [], [], [], {}, [], []
+    relation_outlines = set()
+    for identifier, relation in relations.items():
+        tag = tags(relation)
+        if tag.get('type') != 'multipolygon' or not ('building' in tag or 'building:part' in tag or tag.get('man_made') == 'pier'):
             continue
-        coords = [nodes[ref] for ref in refs]
+        members = [(member.attrib['ref'], member.attrib.get('role', 'outer')) for member in relation.findall('member')
+                   if member.attrib['type'] == 'way']
+        if any(ref not in ways for ref, _ in members):
+            continue
+        outer, inner = [], []
+        for ref, role in members:
+            coordinates = outline(ways[ref], nodes)
+            if coordinates:
+                (inner if role == 'inner' else outer).append(LineString(coordinates))
+        shape = unary_union(list(polygonize(outer))).difference(unary_union(list(polygonize(inner)))).intersection(clip)
+        if shape.is_empty:
+            continue
+        relation_outlines.update(ref for ref, role in members if role != 'inner')
+        if tag.get('man_made') == 'pier':
+            piers.extend(geometries(shape, 'Polygon'))
+        else:
+            features.extend((identifier, tag, polygon) for polygon in geometries(shape, 'Polygon'))
+
+    for identifier, way in ways.items():
+        tag = tags(way)
+        coords = outline(way, nodes)
+        if not coords:
+            continue
         line = LineString(coords)
         if tag.get('natural') == 'coastline':
             coast.extend(geometries(line.intersection(clip), 'LineString'))
@@ -113,6 +192,9 @@ def main():
             flags = int(bridge) + (2 if highway in ('path', 'footway', 'steps', 'pedestrian') else 0)
             for part in geometries(path.intersection(clip), 'LineString'):
                 roads.append([WIDTH[highway], flags, points(part.coords)])
+        if tag.get('man_made') == 'pier' and identifier not in relation_outlines:
+            shape = Polygon(coords).buffer(0) if line.is_ring else line.buffer(1.65, cap_style='flat')
+            piers.extend(geometries(shape.intersection(clip), 'Polygon'))
         if coords[0] != coords[-1] or len(coords) < 4:
             continue
         polygon = Polygon(coords).buffer(0).intersection(clip)
@@ -124,18 +206,9 @@ def main():
                          for p in geometries(polygon.simplify(1), 'Polygon') if p.area > 90)
         if identifier in {'532956287', '527201447', '527264674', '528328082', '534229497', '583148030', '583148033', '527201452'} and not polygon.is_empty:
             places[identifier] = points([polygon.centroid.coords[0]])
-        if 'building' in tag and tag['building'] != 'no' and identifier != '532956287':
-            height = number(tag.get('height', ''))
-            levels = number(tag.get('building:levels', ''))
-            for part in geometries(polygon.simplify(0.42), 'Polygon'):
-                if part.area < 9:
-                    continue
-                center = part.centroid
-                # In the historic quarter, untagged buildings are typically low-rise.
-                old_town = -3500 < center.x < -1700 and -1900 < center.y < -850
-                estimate = (8 if old_town else 11) + int(identifier) % (5 if old_town else 14)
-                buildings.append([round(min(300, max(2.8, height or ((levels * 3.15) if levels else estimate))), 1),
-                                  int(identifier) % 11, points(part.exterior.coords[:-1])])
+        is_building = tag.get('building', 'no') != 'no' or tag.get('building:part', 'no') != 'no'
+        if is_building and identifier != '532956287' and identifier not in relation_outlines:
+            features.extend((identifier, tag, part) for part in geometries(polygon, 'Polygon') if part.area >= 9)
 
     # OSM coastlines place land on the left. The local Z axis points south.
     coastline = []
@@ -156,12 +229,14 @@ def main():
     land = []
     for face in faces:
         if sum(side for point, side in samples if face.contains(point)) > 0:
-            land.append([points(face.exterior.coords[:-1]), *[points(hole.coords[:-1]) for hole in face.interiors]])
+            land.append(face)
     if len(land) < 2 or not places.get('532956287'):
         raise RuntimeError('Incomplete coastline or missing old-town landmark')
-    data = dict(version=1, bounds=points([(min_x, min_z), (max_x, max_z)]),
+    buildings = buildings_for_scene(features, unary_union(land), piers)
+    data = dict(version=2, bounds=points([(min_x, min_z), (max_x, max_z)]),
                 source=[SOURCE + ','.join(map(str, bbox)) for bbox in FEEDS],
-                land=land, ponds=inland_water, roads=roads, buildings=buildings, places=places,
+                land=[rings(face) for face in land], ponds=inland_water, roads=roads,
+                buildings=buildings, places=places, piers=[rings(pier) for pier in piers if pier.area > 2],
                 green=green, trees=[points([p]) for p in trees.values() if clip.contains(Point(p))])
     args.output.write_text(json.dumps(data, separators=(',', ':')) + '\n')
     terrain = args.output.with_name('inner-bay-elevation.json')

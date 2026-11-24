@@ -5,6 +5,10 @@ const palette = [
   0xb7a38b, 0xd1b89e, 0xabb0ad, 0xb48d78, 0xc8beb3, 0xd5c8ae, 0x9eaaa6, 0x9a857a, 0xc4a89b,
   0xb7bbb4, 0xd4c0aa,
 ];
+const arcadePalette = [
+  0xd7b596, 0xd8c9b0, 0xc2ccbe, 0xc9957c, 0xddd1bb, 0xe1cfad, 0xc3cbd1, 0xbda996, 0xd5b1a5,
+  0xccd2c0, 0xe6d6c1,
+];
 const landmarks = [
   ['pavilion', '小公园中山纪念亭', '532956287', [-2815, -1426]],
   ['square', '人民广场', '527201447', [-1861, -1072]],
@@ -54,39 +58,25 @@ function roof(rings, height, shade, addTriangle) {
   const [outer, ...inner] = rings;
   const outline = outer.map(([x, z]) => new T.Vector2(x, z));
   const holes = inner.map((ring) => ring.map(([x, z]) => new T.Vector2(x, z)));
+  const triangles = T.ShapeUtils.triangulateShape(outline, holes);
   const vertices = [...outline, ...holes.flat()].map(({ x, y }) => [x, height, y]);
-  for (const [a, b, c] of T.ShapeUtils.triangulateShape(outline, holes)) {
+  for (const [a, b, c] of triangles) {
     addTriangle(vertices[c], vertices[b], vertices[a], shade);
   }
 }
 
-export function createRealCity(scene, data, elevation) {
+export function createRealCity(scene, data, elevation, materials) {
   const roads = [];
   const roadIndex = new Map();
   const buildingIndex = new Map();
   const land = data.land.map((part) => part.map(pairs));
+  const piers = data.piers.map((part) => part.map(pairs));
   const places = landmarks.map(([id, name, source, fallback]) => ({
     id,
     name,
     point: data.places[source] || fallback,
   }));
   const buffers = new Map();
-  const drawGroups = [];
-  const material = new T.MeshLambertMaterial({ vertexColors: true, side: T.DoubleSide });
-  const overlay = (units) =>
-    new T.MeshLambertMaterial({
-      vertexColors: true,
-      side: T.DoubleSide,
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
-      polygonOffsetUnits: units,
-    });
-  const layers = {
-    elevation: overlay(-1),
-    green: overlay(-2),
-    road: overlay(-3),
-    marking: overlay(-6),
-  };
   const [x1, z1, x2, z2] = data.bounds;
   const globe = new T.Group();
   scene.add(globe);
@@ -109,18 +99,23 @@ export function createRealCity(scene, data, elevation) {
 
   const bucket = (x, z, layer = '') => {
     const id = key(x, z) + layer;
-    if (!buffers.has(id)) buffers.set(id, { position: [], colors: [], layer });
+    if (!buffers.has(id)) buffers.set(id, { position: [], colors: [], uv: [], layer });
     return buffers.get(id);
   };
 
-  function triangle(target, a, b, c, shade) {
+  function triangle(target, a, b, c, shade, uv) {
     target.position.push(...a, ...b, ...c);
     color.setHex(shade);
     for (let i = 0; i < 3; i++) target.colors.push(color.r, color.g, color.b);
+    if (uv) target.uv.push(...uv.flat());
+    else {
+      const repeat = target.layer === 'road' || target.layer === 'bridge' ? 7 : 4.5;
+      for (const [x, , z] of [a, b, c]) target.uv.push(x / repeat, z / repeat);
+    }
   }
-  function quad(target, a, b, c, d, shade) {
-    triangle(target, a, b, c, shade);
-    triangle(target, a, c, d, shade);
+  function quad(target, a, b, c, d, shade, uv) {
+    triangle(target, a, b, c, shade, uv && [uv[0], uv[1], uv[2]]);
+    triangle(target, a, c, d, shade, uv && [uv[0], uv[2], uv[3]]);
   }
 
   const sea = new T.Mesh(
@@ -143,8 +138,31 @@ export function createRealCity(scene, data, elevation) {
     }
   }
   for (const pond of data.ponds) {
-    roof([pairs(pond)], 0.025, waterColor, (a, b, c, shade) => triangle(ground, a, b, c, shade));
+    const outline = pairs(pond);
+    roof([outline], 0.025, waterColor, (a, b, c, shade) =>
+      triangle(bucket(...outline[0], 'waterFeature'), a, b, c, shade),
+    );
   }
+  function foundation(rings, top, color) {
+    const deck = bucket(...rings[0][0], 'quay');
+    roof(rings, top, color, (a, b, c, shade) => triangle(deck, a, b, c, shade));
+    for (const ring of rings) {
+      for (let index = 0; index < ring.length; index++) {
+        const [ax, az] = ring[index];
+        const [bx, bz] = ring[(index + 1) % ring.length];
+        quad(deck, [ax, -1.7, az], [bx, -1.7, bz], [bx, top, bz], [ax, top, az], 0x817e75);
+      }
+    }
+  }
+  for (const pier of piers) foundation(pier, 0.11, 0xa7a39b);
+  const [plazaX, plazaZ] = places[0].point;
+  const plaza = Array.from({ length: 40 }, (_, index) => {
+    const angle = (index * Math.PI * 2) / 40;
+    return [plazaX + Math.cos(angle) * 11.8, plazaZ + Math.sin(angle) * 11.8];
+  });
+  roof([plaza], 0.061, 0xc1b5a5, (a, b, c, shade) =>
+    triangle(bucket(plazaX, plazaZ, 'quay'), a, b, c, shade),
+  );
   for (const [wood, coords] of data.green) {
     const outline = pairs(coords);
     const [x, z] = outline[0];
@@ -174,6 +192,17 @@ export function createRealCity(scene, data, elevation) {
     return land.some(
       ([outer, ...holes]) => contains(x, z, outer) && !holes.some((hole) => contains(x, z, hole)),
     );
+  }
+  function onPier(x, z) {
+    return (pierIndex.get(key(x, z)) || []).some(
+      ([outer, ...holes]) => contains(x, z, outer) && !holes.some((hole) => contains(x, z, hole)),
+    );
+  }
+  const pierIndex = new Map();
+  for (const pier of piers) {
+    const xs = pier[0].map(([x]) => x);
+    const zs = pier[0].map(([, z]) => z);
+    put(pierIndex, pier, Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs));
   }
 
   const grassShade = new T.Color(0x6a805b);
@@ -257,7 +286,7 @@ export function createRealCity(scene, data, elevation) {
         const ez = az + (dz * (i + 1)) / n;
         const y = rise(x, z) + (highway ? 0.12 : foot ? 0.065 : 0.085);
         const ey = rise(ex, ez) + (highway ? 0.12 : foot ? 0.065 : 0.085);
-        const group = bucket(x, z, bridge ? '' : 'road');
+        const group = bucket(x, z, bridge ? 'bridge' : 'road');
         const [u, v] = cross;
         const edge = (x, y, z, side) => {
           const px = x + u * side;
@@ -303,77 +332,94 @@ export function createRealCity(scene, data, elevation) {
     }
   }
 
-  for (const [height, paletteIndex, coords] of data.buildings) {
-    const polygon = pairs(coords);
-    const xs = polygon.map(([x]) => x);
-    const zs = polygon.map(([, z]) => z);
+  for (const [height, paletteIndex, coordinates, offset, levels, waterfront] of data.buildings) {
+    const rings = coordinates.map(pairs);
+    const [outer] = rings;
+    const xs = outer.map(([x]) => x);
+    const zs = outer.map(([, z]) => z);
     const minX = Math.min(...xs);
     const maxX = Math.max(...xs);
     const minZ = Math.min(...zs);
     const maxZ = Math.max(...zs);
     const centerX = (minX + maxX) / 2;
     const centerZ = (minZ + maxZ) / 2;
-    const base = terrain(centerX, centerZ);
-    const roofHeight = base + height;
-    put(buildingIndex, polygon, minX - 1.5, minZ - 1.5, maxX + 1.5, maxZ + 1.5);
-    const group = bucket(centerX, centerZ);
-    const face = palette[paletteIndex];
-    roof([polygon], roofHeight, paletteIndex % 3 ? 0x827b73 : 0x9b8b7c, (a, b, c, shade) =>
-      triangle(group, a, b, c, shade),
-    );
+    const ground = Math.min(...outer.map(([x, z]) => terrain(x, z)));
+    const base = (waterfront ? 0.13 : ground) + offset;
+    const roofHeight = base + height - offset;
     const oldTown = centerX > -3300 && centerX < -2100 && centerZ > -1780 && centerZ < -1020;
-    const direction = T.ShapeUtils.isClockWise(polygon.map(([x, z]) => new T.Vector2(x, z)))
-      ? 1
-      : -1;
-    for (let i = 0; i < polygon.length; i++) {
-      const [ax, az] = polygon[i];
-      const [bx, bz] = polygon[(i + 1) % polygon.length];
-      quad(
-        group,
-        [ax, Math.min(base, terrain(ax, az)), az],
-        [bx, Math.min(base, terrain(bx, bz)), bz],
-        [bx, roofHeight, bz],
-        [ax, roofHeight, az],
-        face,
-      );
-      const length = Math.hypot(bx - ax, bz - az);
-      if (length < 4 || (!oldTown && i % 2 !== 0)) continue;
-      const detail = bucket(centerX, centerZ, 'detail');
-      // Offset glass slightly from the wall and vary the window rhythm by facade length.
-      const ox = (direction * (az - bz) * 0.045) / length;
-      const oz = (direction * (bx - ax) * 0.045) / length;
-      const columns = Math.min(14, Math.max(1, Math.floor(length / (oldTown ? 2.6 : 4.2))));
-      const levels = Math.min(14, Math.floor(height / 3.05));
-      if (oldTown) {
-        for (const top of [3.0, height - 0.3]) {
+    const face = (oldTown ? arcadePalette : palette)[paletteIndex];
+    if (offset < 2.4) {
+      put(buildingIndex, rings, minX - 1.5, minZ - 1.5, maxX + 1.5, maxZ + 1.5);
+    }
+    if (waterfront && !offset) foundation(rings, base, 0xa7a39b);
+    const top = bucket(centerX, centerZ, 'concrete');
+    roof(rings, roofHeight, paletteIndex % 3 ? 0x827b73 : 0x9b8b7c, (a, b, c, shade) =>
+      triangle(top, a, b, c, shade),
+    );
+    const detailedArcade = oldTown && Math.hypot(centerX - plazaX, centerZ - plazaZ) < 145;
+    const outward =
+      detailedArcade && T.ShapeUtils.isClockWise(outer.map(([x, z]) => new T.Vector2(x, z)))
+        ? 1
+        : -1;
+    const floors = Math.max(1, Math.min(80, levels));
+    for (const [ringIndex, ring] of rings.entries()) {
+      for (let index = 0; index < ring.length; index++) {
+        const [ax, az] = ring[index];
+        const [bx, bz] = ring[(index + 1) % ring.length];
+        const length = Math.hypot(bx - ax, bz - az);
+        if (length < 0.05) continue;
+        const plain = length < 3.4 || height - offset < 4;
+        const frontage = oldTown && ringIndex === 0 && length > 5 && floors > 1 && !offset;
+        const facade = oldTown ? 'historic' : height - offset >= 27 ? 'modern' : 'residence';
+        const bays = Math.max(1, Math.round(length / (oldTown ? 2.9 : 3.9)));
+        const cap = Math.min(0.32, (roofHeight - base) * 0.08);
+        const wall = (layer, lower, upper, u, v, tone) =>
           quad(
-            detail,
-            [ax + ox * 2, base + top, az + oz * 2],
-            [bx + ox * 2, base + top, bz + oz * 2],
-            [bx + ox * 2, base + top + 0.15, bz + oz * 2],
-            [ax + ox * 2, base + top + 0.15, az + oz * 2],
-            0xe5cbae,
+            bucket(centerX, centerZ, layer),
+            [ax, lower, az],
+            [bx, lower, bz],
+            [bx, upper, bz],
+            [ax, upper, az],
+            tone,
+            [
+              [0, 0],
+              [u, 0],
+              [u, v],
+              [0, v],
+            ],
           );
+        if (plain) {
+          wall('concrete', base, roofHeight, length / 3, (roofHeight - base) / 3, face);
+          continue;
         }
-      }
-      for (let col = 0; col < columns; col++) {
-        const start = (col + 0.24) / columns;
-        const end = (col + 0.75) / columns;
-        const a = ax + (bx - ax) * start + ox;
-        const b = ax + (bx - ax) * end + ox;
-        const p = az + (bz - az) * start + oz;
-        const q = az + (bz - az) * end + oz;
-        for (let floor = 0; floor < levels; floor++) {
-          const low = base + 0.65 + floor * 3.05;
-          const high = low + (oldTown && floor === 0 ? 1.95 : 1.42);
-          quad(
-            detail,
-            [a, low, p],
-            [b, low, q],
-            [b, high, q],
-            [a, high, p],
-            floor === 0 && oldTown ? 0x665044 : 0x51616b,
-          );
+        const streetHeight = frontage
+          ? Math.min(base + 3.6, base + (roofHeight - base) * 0.48)
+          : base;
+        if (frontage) wall('shop', base, streetHeight, bays, 1, face);
+        wall(
+          facade,
+          streetHeight,
+          roofHeight - cap,
+          bays,
+          Math.max(1, floors - Number(frontage)),
+          face,
+        );
+        wall('concrete', roofHeight - cap, roofHeight, length / 3, cap / 3, 0xaa9e90);
+        if (detailedArcade && frontage) {
+          const ox = ((outward * (az - bz)) / length) * 0.24;
+          const oz = ((outward * (bx - ax)) / length) * 0.24;
+          const trim = bucket(centerX, centerZ, 'concrete');
+          for (const y of [streetHeight, roofHeight - 0.24]) {
+            const a = [ax, y, az];
+            const b = [bx, y, bz];
+            const c = [bx + ox, y, bz + oz];
+            const d = [ax + ox, y, az + oz];
+            const bottomC = [c[0], y - 0.15, c[2]];
+            const bottomD = [d[0], y - 0.15, d[2]];
+            quad(trim, a, b, c, d, 0xd5c2a9);
+            quad(trim, d, c, bottomC, bottomD, 0xb29b81);
+            quad(trim, [ax, y - 0.15, az], bottomD, bottomC, [bx, y - 0.15, bz], 0xb9a58d);
+          }
         }
       }
     }
@@ -384,11 +430,11 @@ export function createRealCity(scene, data, elevation) {
     const geometry = new T.BufferGeometry();
     geometry.setAttribute('position', new T.Float32BufferAttribute(group.position, 3));
     geometry.setAttribute('color', new T.Float32BufferAttribute(group.colors, 3));
+    geometry.setAttribute('uv', new T.Float32BufferAttribute(group.uv, 2));
     geometry.computeVertexNormals();
     geometry.computeBoundingSphere();
-    const mesh = new T.Mesh(geometry, layers[group.layer] || material);
+    const mesh = new T.Mesh(geometry, materials[group.layer] || materials.solid);
     globe.add(mesh);
-    if (group.layer === 'detail') drawGroups.push(mesh);
   }
   makePavilion(globe, places[0].point, terrain(...places[0].point));
   addBridgeTowers(globe, bridgeShapes);
@@ -408,17 +454,19 @@ export function createRealCity(scene, data, elevation) {
 
   function clear(x, z, radius = 0.45) {
     if (x < x1 + 2 || x > x2 - 2 || z < z1 + 2 || z > z2 - 2) return false;
-    if (!roadAt(x, z, true) && !isLand(x, z)) return false;
+    if (!roadAt(x, z, true) && !isLand(x, z) && !onPier(x, z)) return false;
     if (Math.hypot(x - places[0].point[0], z - places[0].point[1]) < 4.5 + radius) return false;
-    for (const polygon of buildingIndex.get(key(x, z)) || []) {
-      if (contains(x, z, polygon)) return false;
-      for (let i = 0; i < polygon.length; i++) {
-        const [ax, az] = polygon[i];
-        const [bx, bz] = polygon[(i + 1) % polygon.length];
-        const dx = bx - ax;
-        const dz = bz - az;
-        const length = Math.hypot(dx, dz);
-        if (length > 0 && projection(x, z, { ax, az, dx, dz, length })[1] < radius) return false;
+    for (const [outer, ...holes] of buildingIndex.get(key(x, z)) || []) {
+      if (contains(x, z, outer) && !holes.some((hole) => contains(x, z, hole))) return false;
+      for (const ring of [outer, ...holes]) {
+        for (let i = 0; i < ring.length; i++) {
+          const [ax, az] = ring[i];
+          const [bx, bz] = ring[(i + 1) % ring.length];
+          const dx = bx - ax;
+          const dz = bz - az;
+          const length = Math.hypot(dx, dz);
+          if (length > 0 && projection(x, z, { ax, az, dx, dz, length })[1] < radius) return false;
+        }
       }
     }
     return true;
@@ -469,15 +517,7 @@ export function createRealCity(scene, data, elevation) {
       return result;
     },
     height(x, z) {
-      return Math.max(terrain(x, z), roadAt(x, z, true)?.rise(x, z) || 0);
-    },
-    detail(x, z, low) {
-      const limit = low ? 210 : 420;
-      for (const mesh of drawGroups) {
-        const { center, radius } = mesh.geometry.boundingSphere;
-        mesh.visible =
-          Math.abs(center.x - x) < limit + radius && Math.abs(center.z - z) < limit + radius;
-      }
+      return Math.max(terrain(x, z), roadAt(x, z, true)?.rise(x, z) || 0, onPier(x, z) ? 0.11 : 0);
     },
   };
 }

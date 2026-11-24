@@ -28,7 +28,7 @@ npm run preview
 
 大厅的「实景自由巡游」从小公园中山纪念亭出发。可在内海湾两岸步行、开车、骑电动车或俯瞰城市。按 M 或点地图可前往地标。按 F 或点「俯瞰」切换空中视角，空格升高、Q 降低，触屏有对应按钮。「更多」中可进入经典自由模式。
 
-实景路网、岸线和建筑轮廓来自 [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright)，按 [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) 提供。浏览器加载随游戏发布的 [内海湾数据](public/maps/inner-bay.json)。有高度或层数标签的楼体按标签生成，其余楼高和立面为估算，纪念亭和桥塔为游戏模型。
+实景路网、岸线和建筑轮廓来自 [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright)，按 [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/) 提供。浏览器加载随游戏发布的 [内海湾数据](public/maps/inner-bay-v2.json)。有高度或层数标签的楼体按标签生成，其余楼高和立面为估算，纪念亭和桥塔为游戏模型。
 
 地形来自 [Mapzen Terrain Tiles](https://registry.opendata.aws/terrain-tiles/)。SRTM 数据由美国地质调查局提供，已裁剪、重采样并平整低洼区以适配道路。要重建地图，按 `scripts/build-real-map.py` 中的 `FEEDS` 顺序保存三份 OSM XML，并下载脚本中 `DEM` 指定的瓦片。安装 Shapely 2 后，运行 `python3 scripts/build-real-map.py west.osm east.osm south.osm --terrain N23E116.hgt.gz`。
 
