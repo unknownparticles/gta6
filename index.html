@@ -119,8 +119,8 @@
         <button class="launch-extra" data-start="ferry">
           <i data-icon="ferry"></i><span><b>广礐轮渡</b><small>一湾两岸</small></span>
         </button>
-        <button id="free-start" class="launch-main" data-start="free">
-          <i data-icon="gamepad"></i><span><b>开始自由模式</b><small>进入S城</small></span
+        <button id="free-start" class="launch-main" data-start="real">
+          <i data-icon="gamepad"></i><span><b>实景自由巡游</b><small>从小公园出发</small></span
           ><span class="launch-arrow">»</span>
         </button>
         <button class="launch-mission" data-open="tasks">
@@ -142,6 +142,7 @@
     </main>
     <section id="play" class="play" aria-label="S城" hidden>
       <canvas id="world" tabindex="0" aria-label="三维游戏画面"></canvas>
+      <canvas id="real-world" tabindex="0" aria-label="内海湾实景三维画面" hidden></canvas>
       <div class="hud">
         <div class="hud-location">
           <span id="district-mark">02</span>
@@ -152,6 +153,7 @@
           ><span id="objective-detail"></span>
         </div>
         <div class="hud-actions">
+          <button type="button" id="real-mode-switch" class="square real-mode-switch" data-game="survey" hidden>俯瞰</button>
           <button type="button" class="square" data-game="map" aria-label="打开地图">
             <i data-icon="map"></i></button
           ><button type="button" class="square" data-game="pause" aria-label="暂停">
@@ -231,6 +233,13 @@
             <i data-icon="pedal"></i><span>油门</span>
           </button>
         </div>
+        <div id="real-height-controls" class="touch-buttons" hidden>
+          <button data-hold="survey-up">升高</button><button data-hold="survey-down">降低</button>
+        </div>
+      </div>
+      <div class="real-map-credit">
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>
+        <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">地形 Mapzen / USGS</a>
       </div>
       <section id="cinematic" class="cinematic" aria-label="过场动画" hidden>
         <div id="cinematic-fade" aria-hidden="true"></div>

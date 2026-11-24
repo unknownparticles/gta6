@@ -109,6 +109,7 @@ export function createInput(canvas, container, action, canPlay, touch) {
     KeyR: 'reload',
     Escape: 'pause',
     KeyM: 'map',
+    KeyF: 'survey',
     Enter: 'fire',
   };
   window.addEventListener(

@@ -40,6 +40,8 @@ const messages = [
   'VIP 车手专享和游客完全相同的海风。',
 ];
 let game;
+let classicGame;
+let realGame;
 let loading = false;
 let blocked = false;
 let view = '';
@@ -780,6 +782,7 @@ function renderPanel(name, data) {
     more() {
       return (
         '<div class="actions">' +
+        button('经典自由模式', 'data-start="free"') +
         [
           ['武器', 'armory'],
           ['车库', 'garage'],
@@ -853,6 +856,13 @@ function renderPanel(name, data) {
       );
     },
     map() {
+      if (game?.real) {
+        return '<canvas class="map-full real-map" width="660" height="320" aria-label="内海湾实景地图"></canvas>' +
+          '<a class="map-source" href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a>' +
+          '<div class="actions real-places">' +
+          game.places.map(({ id, name }) => button(text(name), command('real-place') + ' data-id="' + id + '"')).join('') +
+          '</div>' + button('继续巡游', command('resume'), primary);
+      }
       return (
         '<p>青色箭头是当前位置，金色虚线是导航路线。碗标记是食店，绿色两轮标记是可骑的电动车。</p>' +
         button('继续游戏', command('resume'), primary) +
@@ -963,9 +973,13 @@ async function launch(mode, selection) {
   try {
     open('loading');
     await new Promise((resolve) => requestAnimationFrame(resolve));
-    if (!game) {
-      const { createGame } = await import('./game.js');
-      game = await createGame({
+    const real = mode === 'real';
+    let next = real ? realGame : classicGame;
+    if (!next) {
+      const create = real
+        ? (await import('./real-drive.js')).createRealDrive
+        : (await import('./game.js')).createGame;
+      next = await create({
         stage: play,
         touch,
         store,
@@ -986,7 +1000,16 @@ async function launch(mode, selection) {
           },
         },
       });
+      if (real) realGame = next;
+      else classicGame = next;
     }
+    if (game && next !== game) game.reset();
+    game = next;
+    play.classList.toggle('real-mode', real);
+    $('#world').hidden = real;
+    $('#real-world').hidden = !real;
+    $('#real-mode-switch').hidden = !real;
+    $('#real-height-controls').hidden = true;
     play.hidden = false;
     lobby.hidden = true;
     game.view(!blocked);
@@ -1022,6 +1045,12 @@ function returnLobby() {
 
 function applyAction(action, id) {
   switch (action) {
+    case 'real-place':
+      if (game?.real && view === 'map') {
+        game.locate(id);
+        closePanel();
+      }
+      break;
     case 'story':
       if (chapterUnlocked(save, id)) void launch('story', id);
       break;
