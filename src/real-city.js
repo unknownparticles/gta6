@@ -26,6 +26,7 @@ const landmarks = [
   ['diving', '濠江跳水馆', '534229497', [-22, 1960]],
   ['mountain', '礐石山', '527201452', [-2200, 1290]],
   ['east', '东海岸大道', null, [6025, -1070]],
+  ['hospital', 'S城医院', null, [-800, -1502]],
 ];
 
 const key = (x, z) => Math.floor(x / cells) + ':' + Math.floor(z / cells);
@@ -112,7 +113,14 @@ export function createRealCity(scene, data, elevation, materials) {
 
   const bucket = (x, z, layer = '') => {
     const id = layer === 'ground' ? 'ground' : Math.floor(x / 410) + ':' + Math.floor(z / 410);
-    if (!buffers.has(id)) buffers.set(id, { position: [], colors: [], uv: [], surface: [], global: layer === 'ground' });
+    if (!buffers.has(id))
+      buffers.set(id, {
+        position: [],
+        colors: [],
+        uv: [],
+        surface: [],
+        global: layer === 'ground',
+      });
     return { batch: buffers.get(id), layer };
   };
 
@@ -689,6 +697,11 @@ export function createRealCity(scene, data, elevation, materials) {
     throw new Error('地图缺少可通行地点');
   }
 
+  const hospital = places.find((place) => place.id === 'hospital');
+  const hospitalGate = spawn(hospital.point);
+  hospital.arrival = hospitalGate;
+  markHospital(globe, hospital, height, clear);
+
   return {
     updateVisibility(x, z, range) {
       for (const chunk of sceneryChunks) {
@@ -732,6 +745,41 @@ export function createRealCity(scene, data, elevation, materials) {
     },
     height,
   };
+}
+
+function markHospital(scene, hospital, height, clear) {
+  const [x, z] = hospital.arrival;
+  const heading = Math.atan2(x - hospital.point[0], z - hospital.point[1]);
+  const side = [Math.cos(heading), -Math.sin(heading)];
+  const position = [1, -1]
+    .map((direction) => [x + 4.3 * side[0] * direction, z + 4.3 * side[1] * direction])
+    .find((point) => clear(...point)) || [x, z];
+  const sign = document.createElement('canvas');
+  sign.width = 384;
+  sign.height = 96;
+  const ctx = sign.getContext('2d');
+  ctx.fillStyle = '#28495c';
+  ctx.fillRect(0, 0, 384, 96);
+  ctx.fillStyle = '#fff3d9';
+  ctx.font = 'bold 51px sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'center';
+  ctx.fillText('＋ S城医院', 192, 49);
+  const texture = new T.CanvasTexture(sign);
+  texture.colorSpace = T.SRGBColorSpace;
+  const board = new T.Mesh(
+    new T.PlaneGeometry(4.3, 1.08),
+    new T.MeshBasicMaterial({ map: texture, side: T.DoubleSide }),
+  );
+  const ground = height(...position);
+  board.position.set(position[0], ground + 3, position[1]);
+  board.rotation.y = heading;
+  const post = new T.Mesh(
+    new T.BoxGeometry(0.13, 2.55, 0.13),
+    new T.MeshLambertMaterial({ color: 0x5c666e }),
+  );
+  post.position.set(position[0], ground + 1.28, position[1]);
+  scene.add(post, board);
 }
 
 function makePavilion(scene, [x, z], base) {

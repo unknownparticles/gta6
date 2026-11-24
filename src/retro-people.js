@@ -77,13 +77,13 @@ function joint(parent, x, y, z) {
   return part;
 }
 
-export function retroRider() {
+export function retroRider(outfit = 0x265e68, complexion = 0xba825e) {
   const group = new T.Group();
   const body = joint(group, 0, 0.9, 0);
   const back = joint(body, 0, 0.11, 0);
-  const skin = 0xba825e;
+  const skin = complexion;
   const dark = 0x273148;
-  const jacket = 0x265e68;
+  const jacket = outfit;
   const elastic = 0x183e47;
   const cream = 0xe9dccc;
   const coral = 0xe96959;

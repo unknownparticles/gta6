@@ -1047,8 +1047,7 @@ function applyAction(action, id) {
   switch (action) {
     case 'real-place':
       if (game?.real && view === 'map') {
-        game.locate(id);
-        closePanel();
+        if (game.locate(id)) closePanel();
       }
       break;
     case 'story':

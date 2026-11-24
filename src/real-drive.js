@@ -4,6 +4,7 @@ import { drive } from './driving.js';
 import { setIcon } from './icons.js';
 import { createInput } from './input.js';
 import { createRealCity } from './real-city.js';
+import { realStreetLife } from './real-life.js';
 import { lightRealCity } from './real-light.js';
 import { loadRealMaterials } from './real-materials.js';
 import { retroRider } from './retro-people.js';
@@ -44,6 +45,7 @@ const streetCars = {
     size: 1.24,
     length: 5.8,
   },
+  patrol: { ...cars.sedan, size: 1.1, length: 4.35 },
 };
 const districtFleet = {
   pavilion: ['ebike', 'taxi', 'sedan'],
@@ -59,7 +61,36 @@ const districtFleet = {
   diving: ['sedan', 'ebike'],
   mountain: ['suv', 'ebike'],
   east: ['coupe', 'suv', 'ebike'],
+  hospital: ['taxi'],
 };
+
+const openingShots = [
+  {
+    title: 'GTA6',
+    subtitle: '给他爱6 · S城风云',
+    location: '内海湾',
+    duration: 2.8,
+    from: [-3050, 245, 330],
+    to: [-2790, 170, 190],
+    target: [-2500, 24, -1140],
+  },
+  {
+    title: '礐石大桥',
+    location: '跨湾通道',
+    duration: 2.4,
+    from: [-3210, 158, 46],
+    to: [-3370, 115, 110],
+    target: [-3780, 71, 45],
+  },
+  {
+    title: '小公园',
+    location: '复古街区',
+    duration: 2.2,
+    from: [-2793, 26, -1396],
+    to: [-2807, 5.2, -1402],
+    target: [-2815.4, 3.2, -1426.2],
+  },
+];
 
 export async function createRealDrive({ stage, touch, store, audio, onLoad, callbacks }) {
   onLoad('正在读取内海湾真实路网和建筑轮廓');
@@ -128,6 +159,12 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   let frameMean = 16.7;
   let sampleFrames = 0;
   let sceneTile = '';
+  let openingPlayed = false;
+  let cinematic;
+  let viewActive = true;
+  let health = 100;
+  let hurtUntil = 0;
+  let admitted = false;
   let x = 0;
   let z = 0;
   let altitude = 0;
@@ -148,9 +185,39 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   let nearest;
   let home;
   const mapCache = new WeakMap();
-  const input = createInput(canvas, stage, action, () => active && !paused, touch);
+  const input = createInput(canvas, stage, action, () => active && viewActive && !paused, touch);
   const { held, state } = input;
   const pressing = (...codes) => codes.some((code) => held.has(code));
+  const hospital = city.places.find((place) => place.id === 'hospital');
+  const life = realStreetLife({
+    scene,
+    city,
+    compact: low,
+    createCar(type, index) {
+      const model = type === 'ebike' ? retroScooter() : vehicleModel(type);
+      model.group.visible = false;
+      scene.add(model.group);
+      return {
+        ...model,
+        type,
+        index,
+        x: 0,
+        z: 0,
+        speed: 0,
+        yaw: 0,
+        hp: 100,
+        spec: streetCars[type],
+      };
+    },
+    syncCar: syncRide,
+    notify(message, cue) {
+      callbacks.toast(message);
+      audio.cue(cue);
+    },
+    hurt: damage,
+  });
+  const alert = life.alert;
+  const hud = stage.querySelector('.hud');
 
   function syncRide(ride) {
     const pavement = city.pavementHeight(ride.x, ride.z);
@@ -170,6 +237,116 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     }
   }
 
+  function focusCinematic() {
+    if (cinematic && viewActive) ui['cinematic-skip'].focus({ preventScroll: true });
+  }
+
+  function showShot(shot) {
+    ui['cinematic-title'].textContent = shot.title;
+    ui['cinematic-location'].textContent = shot.location;
+    ui['cinematic-subtitle'].textContent = shot.subtitle || '';
+    ui.cinematic.dataset.opening = String(shot.title === 'GTA6');
+  }
+
+  function playCinematic(shots, done) {
+    if (!store.data.settings.movement || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      done();
+      return;
+    }
+    pause();
+    cinematic = { shots, index: 0, elapsed: 0, done };
+    hud.inert = ui.touch.inert = canvas.inert = true;
+    showShot(shots[0]);
+    ui['cinematic-fade'].style.opacity = '1';
+    ui.cinematic.hidden = false;
+    focusCinematic();
+  }
+
+  function clearCinematic() {
+    cinematic = null;
+    ui.cinematic.hidden = true;
+    hud.inert = ui.touch.inert = canvas.inert = false;
+    sceneTile = '';
+  }
+
+  function finishCinematic() {
+    if (!active || !cinematic) return;
+    const { done } = cinematic;
+    clearCinematic();
+    updateCamera(true);
+    done();
+  }
+
+  function renderCinematic(dt) {
+    let shot = cinematic.shots[cinematic.index];
+    cinematic.elapsed += dt;
+    if (cinematic.elapsed >= shot.duration) {
+      cinematic.elapsed -= shot.duration;
+      if (++cinematic.index === cinematic.shots.length) {
+        finishCinematic();
+        return;
+      }
+      shot = cinematic.shots[cinematic.index];
+      showShot(shot);
+    }
+    const progress = T.MathUtils.smoothstep(cinematic.elapsed, 0, shot.duration);
+    camera.position.set(
+      ...shot.from.map((value, i) => T.MathUtils.lerp(value, shot.to[i], progress)),
+    );
+    camera.lookAt(...shot.target);
+    city.updateVisibility(camera.position.x, camera.position.z, 3500);
+    pedestrian.group.visible = false;
+    footShadow.visible = false;
+    ui['cinematic-fade'].style.opacity = String(
+      Math.max(0, 1 - cinematic.elapsed / 0.24, 1 - (shot.duration - cinematic.elapsed) / 0.24),
+    );
+    renderer.render(scene, camera);
+  }
+
+  function arriveHospital(reason) {
+    admitted = true;
+    pause();
+    life.reset();
+    health = 100;
+    locate(hospital.id);
+    const [gateX, gateZ] = hospital.arrival;
+    const ground = city.height(gateX, gateZ);
+    playCinematic(
+      [
+        {
+          title: '送往医院',
+          location: 'S城医院',
+          duration: 2.2,
+          from: [gateX + 15, ground + 25, gateZ + 20],
+          to: [gateX + 4, ground + 5, gateZ + 7],
+          target: [gateX, ground + 1.1, gateZ],
+        },
+      ],
+      () => callbacks.result('hospital', { reason, lost: store.data.hospitalLoss }),
+    );
+  }
+
+  function damage(amount, reason) {
+    if (admitted || paused || (clock < hurtUntil && amount < 100)) return false;
+    health = Math.max(0, health - amount);
+    hurtUntil = clock + 0.95;
+    if (health > 0) return false;
+    store.data.hospitalLoss = store.data.coins;
+    store.data.coins = 0;
+    store.write();
+    arriveHospital(reason);
+    return true;
+  }
+
+  function nearbyHospital() {
+    return (
+      !flight &&
+      !driving &&
+      grounded &&
+      Math.hypot(x - hospital.arrival[0], z - hospital.arrival[1]) < 8
+    );
+  }
+
   function resize() {
     if (!active || stage.hidden || !stage.clientWidth || !stage.clientHeight) return;
     const width = stage.clientWidth;
@@ -185,7 +362,10 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   function updateHud() {
     nearest =
       !flight && !landing && !driving && grounded
-        ? rides
+        ? [
+            ...rides,
+            ...life.traffic.filter((ride) => ride.group.visible && Math.abs(ride.speed) < 4),
+          ]
             .filter(
               (ride) =>
                 Math.hypot(ride.x - x, ride.z - z) < 3.5 &&
@@ -224,16 +404,25 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     stage.classList.toggle('driving', Boolean(driving));
     stage.toggleAttribute('data-flight', flight);
     stage.classList.remove('swimming', 'aboard', 'volley');
-    ui.wanted.hidden = true;
+    ui.wanted.hidden = !alert.level;
+    ui['wanted-stars'].textContent = '★'.repeat(alert.level) + '☆'.repeat(5 - alert.level);
+    ui['wanted-stars'].setAttribute('aria-label', alert.level + ' 星通缉');
+    ui['wanted-status'].textContent =
+      alert.caught > 0
+        ? '警方正在拦截'
+        : alert.left > 0
+          ? '警方搜索 · ' + Math.ceil(alert.left) + ' 秒后消星'
+          : '警车追缉';
+    ui.wanted.toggleAttribute('data-searching', alert.left > 0);
     ui.crosshair.hidden = true;
     ui['foot-hud'].hidden = true;
     ui['drive-hud'].hidden = !driving;
     ui['real-mode-switch'].textContent = landing ? '取消降落' : flight ? '落地' : '俯瞰';
     ui['real-mode-switch'].hidden = Boolean(driving);
     ui['real-height-controls'].hidden = !flight || !touch();
-    ui['game-gloss'].classList.remove('hurt');
+    ui['game-gloss'].classList.toggle('hurt', hurtUntil > clock + 0.55);
     ui['wallet-value'].textContent = String(store.data.coins);
-    ui['health-value'].textContent = '100 生命';
+    ui['health-value'].textContent = Math.ceil(health) + ' 生命';
     if (driving) {
       ui.speed.textContent = String(Math.round(Math.abs(driving.speed) * 3.6));
       ui.gear.textContent = driving.type === 'ebike' ? '骑' : driving.reverseGear ? 'R' : 'D';
@@ -246,13 +435,19 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       ui['drive-status'].textContent = impact > 0.2 ? '发生碰撞' : '自由驾驶';
     }
     const canExit = driving && Math.abs(driving.speed) < 2.6;
-    ui.interaction.hidden = !nearest && !canExit;
-    if (nearest || canExit) {
+    const treatment = nearbyHospital() && health < 100 && !alert.level;
+    ui.interaction.hidden = !nearest && !canExit && !treatment;
+    if (treatment) {
+      ui.interaction.querySelector('button > span').textContent = '在医院治疗';
+      setIcon(ui['interaction-icon'], 'hospital');
+    } else if (nearest || canExit) {
       ui.interaction.querySelector('button > span').textContent = canExit
         ? '下车'
-        : nearest.type === 'ebike'
-          ? '骑上电动车'
-          : '驾驶' + nearest.spec.name;
+        : life.traffic.includes(nearest) && !nearest.taken
+          ? '抢车 · ' + nearest.spec.name
+          : nearest.type === 'ebike'
+            ? '骑上电动车'
+            : '驾驶' + nearest.spec.name;
       setIcon(ui['interaction-icon'], canExit ? 'exit' : nearest.type === 'ebike' ? 'bike' : 'car');
     }
     drawMap(ui['map-mini'], false);
@@ -274,6 +469,13 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         buildings: city.buildings,
         roadSegments: city.roads.length,
         draws: renderer.info.render.calls,
+        health,
+        wanted: alert.level,
+        search: alert.left,
+        patrols: alert.patrols.length,
+        pedestrians: life.pedestrians,
+        traffic: life.traffic.filter((ride) => ride.group.visible && !ride.taken).length,
+        hospital: admitted,
       });
     }
   }
@@ -378,6 +580,13 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         ctx.fillRect(carX - 2, carZ - 2, 5, 5);
       }
     }
+    ctx.fillStyle = '#f090bd';
+    for (const patrol of alert.patrols) {
+      const [px, pz] = map([patrol.x, patrol.z]);
+      ctx.beginPath();
+      ctx.arc(px, pz, detailed ? 3 : 3.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
     const [px, pz] = map([x, z]);
     ctx.save();
     ctx.translate(px, pz);
@@ -396,6 +605,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   function locate(id = city.places[0].id) {
     const location = city.places.find((place) => place.id === id);
     if (!location) return;
+    life.relocate();
     home = location;
     driving = null;
     flight = false;
@@ -404,7 +614,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     grounded = true;
     viewBlend = 0;
     lift = moving = impact = 0;
-    [x, z] = city.spawn(location.point);
+    [x, z] = location.arrival || city.spawn(location.point);
     altitude = city.height(x, z);
     yaw = facing = Math.atan2(x - location.point[0], z - location.point[1]);
     pitch = 0.09;
@@ -497,6 +707,13 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       driving.driveInput = driving.reverseWait = driving.speed = 0;
       updateHud();
     } else if (name === 'use' && !flight) {
+      if (nearbyHospital() && health < 100 && !alert.level) {
+        health = 100;
+        audio.cue('mark');
+        callbacks.toast('治疗完成，生命已恢复');
+        updateHud();
+        return;
+      }
       if (driving && Math.abs(driving.speed) < 2.6) {
         const side = [
           driving.x + Math.cos(driving.yaw) * 1.8,
@@ -508,6 +725,10 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         altitude = city.height(x, z);
       } else if (!driving && nearest) {
         driving = nearest;
+        if (life.traffic.includes(driving) && !driving.taken) {
+          driving.taken = true;
+          life.offense(1, '抢走街道车辆', x, z);
+        }
         driving.steer = driving.driveInput = driving.reverseWait = 0;
         driving.reverseGear = false;
         driving.travelYaw = driving.yaw;
@@ -557,6 +778,24 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     const dx = (vx * dt) / steps;
     const dz = (vz * dt) / steps;
     for (let i = 0; i < steps; i++) {
+      const other = [...life.traffic, ...alert.patrols].find(
+        (actor) =>
+          actor !== driving &&
+          actor.group.visible &&
+          Math.hypot(actor.x - (x + dx), actor.z - (z + dz)) < 2.4 &&
+          Math.abs(actor.group.position.y - altitude) < 2.4,
+      );
+      if (other && Math.abs(driving.speed) > 1.6) {
+        const speed = Math.abs(driving.speed);
+        driving.speed *= -0.18;
+        impact = 0.41;
+        if (clock >= hurtUntil && speed > 6) {
+          const isPolice = other.type === 'patrol';
+          life.offense(isPolice ? 2 : 1, isPolice ? '撞上警车' : '撞上街道车辆', x, z);
+          if (damage(speed * 2.8, '车辆碰撞')) return;
+        }
+        break;
+      }
       if (rideFits(x + dx, z + dz, driving, spec.size)) {
         x += dx;
         z += dz;
@@ -567,6 +806,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         else if (rideFits(x, z + dz * 0.45, driving, spec.size)) z += dz * 0.45;
         driving.speed *= speed > 7 && impact < 0.15 ? -0.16 : 0.28;
         if (speed > 3.5) impact = Math.min(0.62, speed * 0.045);
+        if (speed > 8 && damage((speed - 4) * 3.1, '高速撞击')) return;
         break;
       }
     }
@@ -747,7 +987,12 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     const elapsed = at - tick;
     const dt = Math.max(0.001, Math.min(0.09, elapsed / 1000));
     tick = at;
-    if (paused || document.hidden) return;
+    if (!viewActive || document.hidden) return;
+    if (cinematic) {
+      renderCinematic(dt);
+      return;
+    }
+    if (paused) return;
     if (elapsed > 0 && elapsed < 200) frameMean += (elapsed - frameMean) * 0.055;
     if (++sampleFrames >= 42 && store.data.settings.graphics !== 'normal') {
       sampleFrames = 0;
@@ -764,7 +1009,10 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     }
     clock += dt;
     const steps = Math.ceil(dt / 0.035);
-    for (let i = 0; i < steps; i++) move(dt / steps);
+    for (let i = 0; i < steps && !paused; i++) move(dt / steps);
+    if (paused) return;
+    life.update(dt, { x, z, altitude }, driving, rides);
+    if (paused) return;
     if (Math.floor(clock * 8) !== Math.floor((clock - dt) * 8)) {
       updateHud();
     }
@@ -810,9 +1058,20 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       /* Unlocked mouse look is available. */
     }
   });
+  ui['cinematic-skip'].addEventListener('click', finishCinematic);
+  ui.cinematic.addEventListener('keydown', (event) => {
+    if (!active || !cinematic || event.key !== 'Escape' || event.repeat) return;
+    event.preventDefault();
+    event.stopPropagation();
+    finishCinematic();
+  });
   canvas.addEventListener('webglcontextlost', (event) => {
     event.preventDefault();
-    if (active) callbacks.result('context', {});
+    if (active) {
+      clearCinematic();
+      pause();
+      callbacks.result('context', {});
+    }
   });
 
   return {
@@ -823,8 +1082,17 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     get paused() {
       return paused;
     },
+    get inCinematic() {
+      return Boolean(cinematic);
+    },
+    focusCinematic,
     launch() {
       active = true;
+      admitted = false;
+      health = 100;
+      hurtUntil = 0;
+      life.reset();
+      sceneTile = '';
       for (const ride of rides) {
         [ride.x, ride.z] = city.spawn(
           [ride.point[0] + 14 + ride.index * 7, ride.point[1] + 11 + ride.index * 12],
@@ -836,27 +1104,53 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       }
       locate();
       resize();
-      pause(false);
+      if (store.data.hospitalLoss !== null) arriveHospital('继续上次住院');
+      else if (!openingPlayed) {
+        openingPlayed = true;
+        playCinematic(openingShots, () => pause(false));
+      } else pause(false);
       if (!frame) frame = requestAnimationFrame(animate);
     },
     view(value) {
+      viewActive = value;
       if (!value) pause();
     },
     reset() {
       pause();
+      clearCinematic();
+      life.reset();
       active = false;
       cancelAnimationFrame(frame);
       frame = 0;
       stage.removeAttribute('data-flight');
     },
     recover() {
+      if (alert.level) {
+        callbacks.toast('通缉解除后可使用脱困');
+        pause(false);
+        return;
+      }
       locate(home?.id);
       pause(false);
+    },
+    discharge() {
+      admitted = false;
+      store.data.hospitalLoss = null;
+      store.write();
+      pause(false);
+      updateHud();
     },
     pause,
     resize,
     action,
     drawMap,
-    locate,
+    locate(id) {
+      if (alert.level) {
+        callbacks.toast('通缉解除后可快速前往地标');
+        return false;
+      }
+      locate(id);
+      return true;
+    },
   };
 }
