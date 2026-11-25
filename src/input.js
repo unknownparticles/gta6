@@ -122,6 +122,7 @@ export function createInput(canvas, container, action, canPlay, touch) {
     KeyM: 'map',
     KeyF: 'survey',
     KeyB: 'radio',
+    KeyL: 'lock-mouse',
     Enter: 'fire',
   };
   window.addEventListener(

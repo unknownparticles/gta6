@@ -1050,6 +1050,19 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       return;
     }
     if (!active || paused) return;
+    if (name === 'lock-mouse') {
+      if (touch()) return;
+      if (document.pointerLockElement === canvas) {
+        document.exitPointerLock();
+      } else {
+        try {
+          canvas.requestPointerLock?.()?.catch?.(() => {});
+        } catch {
+          /* Unlocked mouse look is available. */
+        }
+      }
+      return;
+    }
     const service = name === 'use' ? nearbyAction() : null;
     if (service) {
       service.run();
@@ -1491,14 +1504,6 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     renderer.render(scene, camera);
   }
 
-  canvas.addEventListener('click', () => {
-    if (paused || !active || touch() || document.pointerLockElement === canvas) return;
-    try {
-      canvas.requestPointerLock?.()?.catch?.(() => {});
-    } catch {
-      /* Unlocked mouse look is available. */
-    }
-  });
   ui['cinematic-skip'].addEventListener('click', finishCinematic);
   ui.cinematic.addEventListener('keydown', (event) => {
     if (!active || !cinematic || event.key !== 'Escape' || event.repeat) return;
