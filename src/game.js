@@ -2212,10 +2212,10 @@ export async function createGame({ stage, touch, store, audio, callbacks, onLoad
     shotReport = Math.max(0, shotReport - dt);
     beam.visible = beamTime > 0;
     beam.material.opacity = Math.min(1, beamTime * 10);
-    if (pad.lookX || pad.lookY) {
-      cameraYaw -= pad.lookX;
-      cameraPitch = clamp(cameraPitch + pad.lookY, -0.23, 0.57);
-      pad.lookX = pad.lookY = 0;
+    const [lookX, lookY] = input.readLook(dt);
+    if (lookX || lookY) {
+      cameraYaw -= lookX;
+      cameraPitch = clamp(cameraPitch + lookY, -0.23, 0.57);
       lastCameraInput = time;
     }
     if (vehicle) {

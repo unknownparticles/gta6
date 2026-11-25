@@ -1294,11 +1294,11 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   }
 
   function move(dt) {
-    if (state.lookX || state.lookY) lastLook = clock;
+    const [lookX, lookY] = input.readLook(dt);
+    if (lookX || lookY) lastLook = clock;
     const sensitivity = touch() ? 0.9 : 0.72;
-    yaw -= state.lookX * sensitivity;
-    pitch = clamp(pitch + state.lookY * sensitivity, flight ? -1.11 : -0.35, flight ? 1.18 : 0.64);
-    state.lookX = state.lookY = 0;
+    yaw -= lookX * sensitivity;
+    pitch = clamp(pitch + lookY * sensitivity, flight ? -1.11 : -0.35, flight ? 1.18 : 0.64);
     impact = Math.max(0, impact - dt);
     const lateral =
       Number(pressing('KeyD', 'ArrowRight')) - Number(pressing('KeyA', 'ArrowLeft')) + state.x;

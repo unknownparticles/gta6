@@ -1,6 +1,9 @@
+const mouseEdgeWidth = 24;
+const mouseEdgeSpeed = 1.8;
+
 export function createInput(canvas, container, action, canPlay, touch) {
   const held = new Set();
-  const state = { x: 0, y: 0, lookX: 0, lookY: 0, aiming: false, fire: false };
+  const state = { x: 0, y: 0, aiming: false, fire: false };
   const stick = container.querySelector('#stick');
   const knob = stick.firstElementChild;
   const look = container.querySelector('#touch-look');
@@ -10,7 +13,15 @@ export function createInput(canvas, container, action, canPlay, touch) {
   let dragMoved = false;
   let mouseX = null;
   let mouseY = 0;
+  let lookX = 0;
+  let lookY = 0;
+  let edgeTurn = 0;
   const pointerButtons = new Map();
+
+  const resetMouseLook = () => {
+    mouseX = null;
+    edgeTurn = 0;
+  };
 
   const position = (event) => {
     const rect = stick.getBoundingClientRect();
@@ -75,8 +86,8 @@ export function createInput(canvas, container, action, canPlay, touch) {
     'pointermove',
     (event) => {
       if (event.pointerId !== lookId) return;
-      state.lookX += (event.clientX - lastX) * 0.007;
-      state.lookY += (event.clientY - lastY) * 0.005;
+      lookX += (event.clientX - lastX) * 0.007;
+      lookY += (event.clientY - lastY) * 0.005;
       lastX = event.clientX;
       lastY = event.clientY;
     },
@@ -183,17 +194,21 @@ export function createInput(canvas, container, action, canPlay, touch) {
   );
   function moveMouse(dx, dy) {
     if (mousePressed && Math.abs(dx) + Math.abs(dy) > 2) dragMoved = true;
-    state.lookX += dx * 0.0041;
-    state.lookY += dy * 0.0034;
+    lookX += dx * 0.0041;
+    lookY += dy * 0.0034;
   }
 
   canvas.addEventListener(
     'pointermove',
     (event) => {
-      if (event.pointerType !== 'mouse' || touch() || document.pointerLockElement === canvas) return;
-      if (canPlay() && mouseX !== null) moveMouse(event.clientX - mouseX, event.clientY - mouseY);
+      if (event.pointerType !== 'mouse' || touch() || document.pointerLockElement || !canPlay()) return;
+      if (mouseX !== null) moveMouse(event.clientX - mouseX, event.clientY - mouseY);
       mouseX = event.clientX;
       mouseY = event.clientY;
+      const { left, right } = canvas.getBoundingClientRect();
+      const leftWeight = Math.max(0, 1 - (mouseX - left) / mouseEdgeWidth);
+      const rightWeight = Math.max(0, 1 - (right - mouseX) / mouseEdgeWidth);
+      edgeTurn = mouseEdgeSpeed * Math.max(-1, Math.min(1, rightWeight - leftWeight));
     },
     options,
   );
@@ -201,7 +216,7 @@ export function createInput(canvas, container, action, canPlay, touch) {
     'pointerleave',
     (event) => {
       if (event.pointerType !== 'mouse') return;
-      mouseX = null;
+      resetMouseLook();
       if (mousePressed) dragMoved = true;
     },
     options,
@@ -214,25 +229,28 @@ export function createInput(canvas, container, action, canPlay, touch) {
     },
     options,
   );
-  document.addEventListener(
-    'pointerlockchange',
-    () => {
-      mouseX = null;
-    },
-    options,
-  );
+  document.addEventListener('pointerlockchange', resetMouseLook, options);
+  window.addEventListener('resize', resetMouseLook, options);
+  window.addEventListener('blur', resetMouseLook, options);
 
   return {
     held,
     state,
+    readLook(dt) {
+      const turn =
+        edgeTurn && canPlay() && !touch() && !document.pointerLockElement ? edgeTurn * dt : 0;
+      const delta = [lookX + turn, lookY];
+      lookX = lookY = 0;
+      return delta;
+    },
     clear() {
       held.clear();
       pointerButtons.forEach((button) => delete button.dataset.pressed);
       pointerButtons.clear();
       stickId = lookId = null;
-      mouseX = null;
+      resetMouseLook();
       knob.style.transform = '';
-      state.x = state.y = state.lookX = state.lookY = 0;
+      state.x = state.y = lookX = lookY = 0;
       state.fire = state.aiming = mousePressed = false;
     },
   };
