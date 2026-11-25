@@ -125,7 +125,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     powerPreference: 'high-performance',
   });
   renderer.toneMapping = T.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.13;
+  renderer.toneMappingExposure = 1.06;
   const [data, elevation, materials] = await Promise.all([
     readMap('inner-bay-v3.json'),
     readMap('inner-bay-elevation-v3.json'),
@@ -458,6 +458,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     ui['cinematic-fade'].style.opacity = String(
       Math.max(0, 1 - cinematic.elapsed / 0.24, 1 - (shot.duration - cinematic.elapsed) / 0.24),
     );
+    city.updateWater(clock + (cinematic?.elapsed || 0), store.data.settings.movement);
     renderer.render(scene, camera);
   }
 
@@ -1520,6 +1521,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         ride.group.visible = ride === driving || Math.hypot(ride.x - x, ride.z - z) < range * 0.26;
       }
     }
+    city.updateWater(clock + (cinematic?.elapsed || 0), store.data.settings.movement);
     renderer.render(scene, camera);
   }
 

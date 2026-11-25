@@ -65,6 +65,42 @@ export function loadModels() {
   return loading;
 }
 let streetCarsLoading;
+
+export function addPortContainers(scene, stacks) {
+  const source = glbs.container;
+  if (!source || !stacks.length) return;
+  const bounds = new T.Box3().setFromObject(source);
+  const center = bounds.getCenter(new T.Vector3());
+  const size = bounds.getSize(new T.Vector3());
+  const shift = new T.Matrix4().makeTranslation(-center.x, -bounds.min.y, -center.z);
+  const rotation = new T.Quaternion();
+  const scale = new T.Vector3(12 / size.x, 2.65 / size.y, 2.55 / size.z);
+  const palette = [0x676c75, 0xb29c77, 0x74978a, 0xc29483];
+  const tint = new T.Color();
+  const transform = new T.Matrix4();
+  const position = new T.Vector3();
+  const sites = stacks.flatMap(({ x, z, y, levels }, index) =>
+    Array.from({ length: levels }, (_, level) => ({
+      x,
+      z,
+      y: y + level * 2.65,
+      color: palette[(index + level * 3) % palette.length],
+    })),
+  );
+  source.traverse((part) => {
+    if (!part.isMesh) return;
+    const set = new T.InstancedMesh(part.geometry, part.material, sites.length);
+    sites.forEach((site, index) => {
+      position.set(site.x, site.y, site.z);
+      transform.compose(position, rotation, scale).multiply(shift).multiply(part.matrixWorld);
+      set.setMatrixAt(index, transform);
+      set.setColorAt(index, tint.setHex(site.color));
+    });
+    set.computeBoundingSphere();
+    scene.add(set);
+  });
+}
+
 export function loadStreetCars() {
   if (streetCarsLoading) return streetCarsLoading;
   const loader = new GLTFLoader();

@@ -6,6 +6,26 @@ export function makeVenues(scene, buildingFronts, city) {
   const trim = new T.MeshLambertMaterial({ color: 0xd3b695 });
   const glass = new T.MeshLambertMaterial({ color: 0x355860 });
   const lamp = new T.MeshBasicMaterial({ color: 0xf5c18a });
+  const haloCanvas = document.createElement('canvas');
+  haloCanvas.width = haloCanvas.height = 64;
+  const haloContext = haloCanvas.getContext('2d');
+  const gradient = haloContext.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gradient.addColorStop(0, 'rgba(255,182,102,0.65)');
+  gradient.addColorStop(0.4, 'rgba(255,155,80,0.26)');
+  gradient.addColorStop(1, 'rgba(255,126,62,0)');
+  haloContext.fillStyle = gradient;
+  haloContext.fillRect(0, 0, 64, 64);
+  const haloTexture = new T.CanvasTexture(haloCanvas);
+  haloTexture.colorSpace = T.SRGBColorSpace;
+  const haloMaterial = new T.MeshBasicMaterial({
+    map: haloTexture,
+    transparent: true,
+    depthWrite: false,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    side: T.DoubleSide,
+    blending: T.AdditiveBlending,
+  });
   const queueGeometry = new T.CylinderGeometry(0.12, 0.14, 0.39, 6);
   const headGeometry = new T.IcosahedronGeometry(0.103, 0);
   const queueMaterial = new T.MeshLambertMaterial();
@@ -69,6 +89,13 @@ export function makeVenues(scene, buildingFronts, city) {
       panel(group, glass, width * 0.15, 1.47, 0.25, width * 0.21, 2.7, 0.05);
       panel(group, trim, -width * 0.22, 1.44, 0.29, 0.06, 2.27, 0.05);
       panel(group, lamp, -width * 0.22, 2.35, 0.3, width * 0.36, 0.09, 0.06);
+      const warmth = new T.Mesh(new T.PlaneGeometry(width * 0.83, 2.45), haloMaterial);
+      warmth.position.set(-width * 0.07, 1.58, 0.37);
+      group.add(warmth);
+      const spill = new T.Mesh(new T.PlaneGeometry(width * 0.9, 4.6), haloMaterial);
+      spill.rotation.x = -Math.PI / 2;
+      spill.position.set(-width * 0.07, city.height(...point) - base + 0.2, 1.66);
+      group.add(spill);
       for (let i = 0; i < 3; i++) {
         panel(group, trim, -width * 0.34 + i * width * 0.095, 0.93, 0.32, 0.17, 0.13, 0.1);
       }

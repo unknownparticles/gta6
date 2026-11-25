@@ -1,9 +1,11 @@
 import * as T from 'three';
 import { addCrossings, addHeroLandmarks, crossings } from './real-landmarks.js';
 import { cityDepthOffset, cityLayers } from './real-materials.js';
+import { makeHarborWater, sunDirection } from './real-light.js';
 import { realLandmarks } from './city-directory.js';
 import { makeVenues } from './city-venues.js';
 import { addRetroTrees } from './retro-street.js';
+import { addPortContainers } from './world.js';
 
 const cells = 240;
 const palette = [
@@ -78,6 +80,7 @@ export function createRealCity(scene, data, elevation, materials) {
   const sceneryChunks = [];
   const arcades = [];
   const buildingFronts = [];
+  const castings = [];
   const [x1, z1, x2, z2] = data.bounds;
   const globe = new T.Group();
   scene.add(globe);
@@ -133,7 +136,7 @@ export function createRealCity(scene, data, elevation, materials) {
 
   const sea = new T.Mesh(
     new T.PlaneGeometry(x2 - x1 + 17000, z2 - z1 + 17000),
-    new T.MeshPhongMaterial({ color: waterColor, shininess: 25, specular: 0x638492 }),
+    makeHarborWater(),
   );
   sea.rotation.x = -Math.PI / 2;
   sea.position.set((x1 + x2) / 2, -1.4, (z1 + z2) / 2);
@@ -336,6 +339,7 @@ export function createRealCity(scene, data, elevation, materials) {
     const ground = Math.min(...outer.map(([x, z]) => terrain(x, z)));
     const base = (waterfront ? 0.13 : ground) + offset;
     const roofHeight = base + height - offset;
+    if (!offset && ground < 3) castings.push({ rings, height: roofHeight });
     const oldTown = centerX > -3300 && centerX < -2100 && centerZ > -1780 && centerZ < -1020;
     const face = (oldTown ? arcadePalette : palette)[paletteIndex];
     const volume = { rings, bottom: base, top: roofHeight };
@@ -608,6 +612,7 @@ export function createRealCity(scene, data, elevation, materials) {
   addHeroLandmarks(globe, data, terrain, materials, addVolume);
 
   function addVolume(rings, bottom, top, landable = true) {
+    if (bottom < 3) castings.push({ rings, height: top });
     const xs = rings[0].map(([x]) => x);
     const zs = rings[0].map(([, z]) => z);
     put(
@@ -740,6 +745,25 @@ export function createRealCity(scene, data, elevation, materials) {
   markHospital(globe, hospital, height, clear);
   const venues = makeVenues(globe, buildingFronts, { clear, spawn, height });
   places.push(...venues.map(({ id, name, point }) => ({ id, name, point, arrival: point })));
+  const cargo = venues.find(({ id }) => id === 'cargo').point;
+  const stacks = [];
+  for (const [row, z] of [-871, -862, -851].entries()) {
+    for (let column = 0; column < 5; column++) {
+      const x = -2248 + column * 22;
+      if (Math.hypot(x - cargo[0], z - cargo[1]) < 17 || roadAt(x, z)) continue;
+      if (![-6, 6].every((dx) => [-1.3, 1.3].every((dz) => clear(x + dx, z + dz, 1)))) continue;
+      const y = height(x, z);
+      const levels = 1 + ((row * 2 + column * 5) % 3);
+      stacks.push({ x, z, y, levels });
+      addVolume(
+        [[[x - 6, z - 1.275], [x + 6, z - 1.275], [x + 6, z + 1.275], [x - 6, z + 1.275]]],
+        y,
+        y + 2.65 * levels,
+      );
+    }
+  }
+  addPortContainers(globe, stacks);
+  bakeStreetShadows(materials.batch, castings, plazaX, plazaZ);
 
   function bridgePoint(id, z) {
     const road = roads.find(
@@ -754,6 +778,10 @@ export function createRealCity(scene, data, elevation, materials) {
   }
 
   return {
+    updateWater(time, movement) {
+      sea.material.uniforms.time.value = time % 2048;
+      sea.material.uniforms.motion.value = Number(movement);
+    },
     updateVisibility(x, z, range) {
       for (const chunk of sceneryChunks) {
         const { center, radius } = chunk.geometry.boundingSphere;
@@ -801,6 +829,50 @@ export function createRealCity(scene, data, elevation, materials) {
     },
     height,
   };
+}
+
+function bakeStreetShadows(material, buildings, x, z) {
+  // A fixed neighborhood mask gives long shadows without rendering a second scene each frame.
+  const width = 850;
+  const depth = 760;
+  const x0 = x - width * 0.55;
+  const z0 = z - depth * 0.54;
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 1024;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.scale(canvas.width / width, canvas.height / depth);
+  ctx.translate(-x0, -z0);
+  ctx.fillStyle = '#d9d9d9';
+  const trace = (ring, dx = 0, dz = 0) => {
+    for (const [index, [px, pz]] of ring.entries()) {
+      if (index === 0) ctx.moveTo(px + dx, pz + dz);
+      else ctx.lineTo(px + dx, pz + dz);
+    }
+    ctx.closePath();
+  };
+  for (const { rings, height } of buildings) {
+    const [outer] = rings;
+    const dx = (-sunDirection.x * height) / sunDirection.y;
+    const dz = (-sunDirection.z * height) / sunDirection.y;
+    if (!outer.some(([px, pz]) => px > x0 - 110 && px < x0 + width &&
+        pz > z0 - 215 && pz < z0 + depth)) continue;
+    ctx.beginPath();
+    for (const ring of rings) trace(ring, dx, dz);
+    ctx.fill('evenodd');
+    for (const [index, [ax, az]] of outer.entries()) {
+      const [bx, bz] = outer[(index + 1) % outer.length];
+      ctx.beginPath();
+      trace([[ax, az], [bx, bz], [bx + dx, bz + dz], [ax + dx, az + dz]]);
+      ctx.fill();
+    }
+  }
+  const mask = new T.CanvasTexture(canvas);
+  mask.minFilter = T.LinearMipmapLinearFilter;
+  material.uniforms.shadeMap.value = mask;
+  material.uniforms.shadeBounds.value.set(x0, z0, width, depth);
 }
 
 function markHospital(scene, hospital, height, clear) {

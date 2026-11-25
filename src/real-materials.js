@@ -1,4 +1,5 @@
 import * as T from 'three';
+import { harborFog, harborHaze, sunDirection } from './real-light.js';
 
 function repeat(texture, renderer) {
   texture.colorSpace = T.SRGBColorSpace;
@@ -102,19 +103,28 @@ function cityBatchMaterial(images) {
   return new T.ShaderMaterial({
     glslVersion: T.GLSL3,
     side: T.DoubleSide,
-    uniforms: { surfaces: { value: map }, haze: { value: new T.Color(0xd79ca7) } },
+    uniforms: {
+      surfaces: { value: map },
+      sun: { value: sunDirection },
+      haze: { value: new T.Color(harborHaze) },
+      fogDensity: { value: harborFog },
+      shadeMap: { value: null },
+      shadeBounds: { value: new T.Vector4(0, 0, 1, 1) },
+    },
     vertexShader: `
       in vec3 color;
       in vec2 surface;
       out vec2 texCoord;
       out vec3 tint;
       out vec3 outward;
+      out vec3 world;
       out float depth;
       flat out float layer;
       void main() {
         texCoord = uv;
         tint = color;
         outward = normal;
+        world = (modelMatrix * vec4(position, 1.0)).xyz;
         layer = surface.x;
         vec4 eye = modelViewMatrix * vec4(position, 1.0);
         depth = -eye.z;
@@ -124,21 +134,71 @@ function cityBatchMaterial(images) {
     fragmentShader: `
       precision highp sampler2DArray;
       uniform sampler2DArray surfaces;
-      uniform vec3 haze;
+      uniform sampler2D shadeMap;
+      uniform vec4 shadeBounds;
+      uniform vec3 haze, sun;
+      uniform float fogDensity;
       in vec2 texCoord;
       in vec3 tint;
       in vec3 outward;
+      in vec3 world;
       in float depth;
       flat in float layer;
       out vec4 retroColor;
       #define gl_FragColor retroColor
+      float hash(vec2 p) {
+        vec3 q = fract(vec3(p.xyx) * .1031);
+        q += dot(q,q.yzx+33.33);
+        return fract((q.x+q.y)*q.z);
+      }
+      float surfaceVariation(vec2 p) {
+        vec2 base = floor(p), f = fract(p);
+        f = f*f*(3.0-2.0*f);
+        return mix(mix(hash(base),hash(base+vec2(1,0)),f.x),
+          mix(hash(base+vec2(0,1)),hash(base+1.0),f.x),f.y);
+      }
       void main() {
         vec3 normal = normalize(outward) * (gl_FrontFacing ? 1.0 : -1.0);
-        vec3 color = texture(surfaces, vec3(texCoord.x, -texCoord.y, layer)).rgb * tint;
-        float sunlight = max(0.0, dot(normal, normalize(vec3(-.70,.47,.53))));
-        vec3 shading = mix(vec3(.54,.56,.70), vec3(.91,.84,.82), normal.y*.5+.5);
-        color *= shading + vec3(.69,.51,.37)*sunlight;
-        gl_FragColor = vec4(mix(color, haze, 1.0 - exp(-pow(max(depth,0.)*.00057,2.))), 1.0);
+        vec3 base = texture(surfaces, vec3(texCoord.x, -texCoord.y, layer)).rgb * tint;
+        float sunlight = max(0.0, dot(normal, sun));
+        float horizon = smoothstep(-.08,.95,normal.y);
+        vec3 shade = mix(vec3(.43,.48,.62), vec3(.72,.77,.86), horizon);
+        float distanceFade = 1.0 - smoothstep(38.0, 150.0, depth);
+        float shadow = 1.0;
+        if (normal.y > .7 && world.y < 2.0) {
+          vec2 shadeUV = (world.xz - shadeBounds.xy) / shadeBounds.zw;
+          if (all(greaterThan(shadeUV, vec2(0))) && all(lessThan(shadeUV, vec2(1)))) {
+            float edge = min(min(shadeUV.x,1.0-shadeUV.x),min(shadeUV.y,1.0-shadeUV.y));
+            shadow = 1.0 - texture(shadeMap, vec2(shadeUV.x,1.0-shadeUV.y)).r *
+              smoothstep(0.0, .035, edge) * .78;
+          }
+        }
+        vec3 color = base * (shade * mix(.76,1.0,shadow) + vec3(1.21,.78,.48) * sunlight * shadow);
+        if (distanceFade > .0 && ((layer > .5 && layer < 3.5) || layer > 3.5)) {
+          float weathered = surfaceVariation(world.xz * .13 + world.y * .21);
+          float grain = surfaceVariation(world.xz * 3.4 + world.y * 4.2);
+          if (layer > 1.5 && layer < 3.5 && normal.y > .82) {
+            float wet = smoothstep(.31,.73,weathered*.74 + grain*.26);
+            vec3 view = normalize(cameraPosition-world);
+            vec3 ripple = normal;
+            ripple.xz += vec2(grain-.5,weathered-.5) * .24;
+            float towardLight = max(0.0,dot(reflect(-view, normalize(ripple)),sun));
+            float sheen = pow(1.0 - max(view.y,0.0), 3.0);
+            color *= 1.0 - .26 * wet * distanceFade;
+            color += distanceFade * wet * vec3(.12,.16,.19) * sheen * .6;
+            color += distanceFade * wet * shadow * vec3(1.05,.64,.31) * pow(towardLight,14.0) * .35;
+          } else {
+            color *= mix(1.0, .84 + weathered*.27 + grain*.07, distanceFade);
+            if (layer > 3.5 && abs(normal.y) < .35) {
+              float luma = dot(base, vec3(.2126,.7152,.0722));
+              float panes = smoothstep(.02,.12,base.b-base.r) * (1.0-smoothstep(.1,.34,luma));
+              vec3 sight = normalize(cameraPosition-world);
+              float angle = 1.0 - max(dot(sight,normal),0.0);
+              color += panes * angle * vec3(.035,.067,.089) * distanceFade;
+            }
+          }
+        }
+        gl_FragColor = vec4(mix(color, haze, 1.0 - exp(-pow(max(depth,0.)*fogDensity,2.))), 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
       }`,
