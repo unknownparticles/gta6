@@ -245,9 +245,9 @@ export function retroRider(outfit = 0x265e68, complexion = 0xba825e) {
   let mode = 0;
   let clock = 0;
   const blend = T.MathUtils.lerp;
-  function animate({ speed, airborne, riding, steer = 0, dt }) {
+  function animate({ speed, airborne, riding, steer = 0, strike = 0, armed = false, dt }) {
     clock += dt;
-    phase = (phase + Math.min(speed, 8.6) * dt * 2.9) % (Math.PI * 2);
+    phase = (phase + Math.min(speed, 9.6) * dt * 2.9) % (Math.PI * 2);
     const amount = 1 - Math.exp(-16 * dt);
     gait = blend(gait, Math.min(speed / 4, 1), amount);
     mode = blend(mode, Number(riding), amount);
@@ -259,7 +259,7 @@ export function retroRider(outfit = 0x265e68, complexion = 0xba825e) {
       mode * 0.205,
     );
     back.rotation.set(
-      blend(0.07 * run + lift * 0.08, -0.23, mode),
+      blend(-0.19 * run + lift * 0.08, -0.23, mode),
       0.11 * Math.sin(phase) * gait * (1 - mode),
       0,
     );
@@ -280,6 +280,10 @@ export function retroRider(outfit = 0x265e68, complexion = 0xba825e) {
         side * (0.1 + mode * 0.1 + lift * 0.15),
       );
       elbow.rotation.x = blend(0.1 + gait * run * 0.75 + lift * 0.63, 1.18, mode);
+      if (strike > 0 && side > 0 && !riding) {
+        shoulder.rotation.x += strike * (armed ? 1.12 : 1.43);
+        elbow.rotation.x = blend(elbow.rotation.x, armed ? 0.25 : 0.08, strike);
+      }
     });
   }
   return { group, animate };

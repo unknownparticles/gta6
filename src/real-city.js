@@ -603,9 +603,11 @@ export function createRealCity(scene, data, elevation, materials) {
     if (!group.global) sceneryChunks.push(mesh);
     globe.add(mesh);
   }
-  makePavilion(globe, places[0].point, terrain(...places[0].point));
+  makePavilion(globe, places[0].point, terrain(...places[0].point), addVolume);
   addCrossings(globe, bridgeShapes);
-  addHeroLandmarks(globe, data, terrain, materials, (rings, bottom, top, landable = true) => {
+  addHeroLandmarks(globe, data, terrain, materials, addVolume);
+
+  function addVolume(rings, bottom, top, landable = true) {
     const xs = rings[0].map(([x]) => x);
     const zs = rings[0].map(([, z]) => z);
     put(
@@ -616,7 +618,7 @@ export function createRealCity(scene, data, elevation, materials) {
       Math.max(...xs) + 1.6,
       Math.max(...zs) + 1.6,
     );
-  });
+  }
   const streetTrees = data.trees.map(([x, z]) => [x, z, false]);
   for (const place of places.filter(({ id }) =>
     ['pavilion', 'square', 'east', 'museum'].includes(id),
@@ -660,11 +662,6 @@ export function createRealCity(scene, data, elevation, materials) {
   }
 
   function blocked(x, z, bottom, top, radius = 0.45) {
-    const dx = x - plazaX;
-    const dz = z - plazaZ;
-    const pavilion = terrain(plazaX, plazaZ);
-    if (top > pavilion && bottom < pavilion + 6.8 && dx * dx + dz * dz < (4.5 + radius) ** 2)
-      return true;
     for (const volume of buildingIndex.get(key(x, z)) || []) {
       if (bottom >= volume.top - 0.04 || top <= volume.bottom + 0.02) continue;
       if (insideFootprint(x, z, volume.rings)) return true;
@@ -841,7 +838,7 @@ function markHospital(scene, hospital, height, clear) {
   scene.add(post, board);
 }
 
-function makePavilion(scene, [x, z], base) {
+function makePavilion(scene, [x, z], base, addVolume) {
   const pavilion = new T.Group();
   pavilion.position.set(x, base, z);
   const mesh = (geometry, shade, y) => {
@@ -854,11 +851,23 @@ function makePavilion(scene, [x, z], base) {
   };
   mesh(new T.CylinderGeometry(4.5, 4.65, 0.42, 8), 0xb8a88b, 0.21);
   mesh(new T.CylinderGeometry(4, 4.35, 0.25, 8), 0xd8c5a6, 0.53);
+  const octagon = (cx, cz, radius, bottom, top, landable) => {
+    const ring = Array.from({ length: 8 }, (_, i) => {
+      const angle = i * Math.PI / 4;
+      return [cx + radius * Math.cos(angle), cz + radius * Math.sin(angle)];
+    });
+    addVolume([ring], base + bottom, base + top, landable);
+  };
+  octagon(x, z, 4.6, 0, 0.42, true);
+  octagon(x, z, 4.29, 0.42, 0.655, true);
   for (let i = 0; i < 8; i++) {
     const angle = (Math.PI * i) / 4;
     const pillar = mesh(new T.CylinderGeometry(0.22, 0.27, 3.8, 8), 0x9f5240, 2.5);
     pillar.position.set(Math.cos(angle) * 3.18, 2.5, Math.sin(angle) * 3.18);
+    octagon(x + pillar.position.x, z + pillar.position.z, 0.26, 0.65, 4.4, false);
   }
+  octagon(x, z, 4.85, 4.28, 5.07, false);
+  octagon(x, z, 2.9, 5.07, 6.42, false);
   const roofProfile = (base, edge, inner, rise) => {
     const positions = [];
     const profile = [

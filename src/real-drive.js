@@ -201,6 +201,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   let waypoint;
   let weapon = -1;
   let nextStrike = 0;
+  let attackUntil = 0;
   let aiming = false;
   let race;
   let matchPaid = false;
@@ -215,6 +216,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   let viewBlend = 0;
   let cameraArm = 4.5;
   let lastLook = -10;
+  let keyTurn = 0;
   let impact = 0;
   let yaw = 0;
   let pitch = 0.09;
@@ -383,6 +385,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
   function pause(value = true) {
     paused = value;
     input.clear();
+    keyTurn = 0;
     if (paused) {
       audio.pause();
       if (document.pointerLockElement === canvas) document.exitPointerLock();
@@ -614,6 +617,8 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       return;
     }
     nextStrike = clock + (spec?.interval || 0.43);
+    attackUntil = clock + (spec ? 0.18 : 0.29);
+    facing = yaw;
     if (spec) {
       ammo.ammo--;
       store.write();
@@ -799,6 +804,9 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         paused,
         speed: driving?.speed ?? null,
         vehicle: driving?.type ?? null,
+        moving,
+        sprinting: state.sprinting || pressing('sprint'),
+        attack: attackUntil > clock,
         buildings: city.buildings,
         roadSegments: city.roads.length,
         draws: renderer.info.render.calls,
@@ -1089,7 +1097,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     } else if (name === 'survey' && !driving && !coast.riding && !swimming) {
       toggleFlight();
     } else if (name === 'jump' && !flight && !driving && grounded && !coast.riding && !swimming) {
-      lift = 5.9;
+      lift = 6.5;
       grounded = false;
     } else if (
       name === 'gear' &&
@@ -1308,13 +1316,19 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
 
   function move(dt) {
     const [lookX, lookY] = input.readLook(dt);
-    if (lookX || lookY) lastLook = clock;
+    const directionTurn = driving
+      ? 0
+      : Number(pressing('ArrowRight')) - Number(pressing('ArrowLeft'));
+    if (directionTurn && keyTurn * directionTurn < 0) keyTurn = 0;
+    keyTurn = directionTurn ? damp(keyTurn, directionTurn * 1.6, 5, dt) : 0;
+    if (lookX || lookY || keyTurn) lastLook = clock;
     const sensitivity = touch() ? 0.9 : 0.72;
-    yaw -= lookX * sensitivity;
+    yaw -= lookX * sensitivity + keyTurn * dt;
     pitch = clamp(pitch + lookY * sensitivity, flight ? -1.11 : -0.35, flight ? 1.18 : 0.64);
     impact = Math.max(0, impact - dt);
     const lateral =
-      Number(pressing('KeyD', 'ArrowRight')) - Number(pressing('KeyA', 'ArrowLeft')) + state.x;
+      Number(pressing('KeyD') || (driving && pressing('ArrowRight'))) -
+      Number(pressing('KeyA') || (driving && pressing('ArrowLeft'))) + state.x;
     const depth =
       Number(pressing('KeyW', 'ArrowUp')) - Number(pressing('KeyS', 'ArrowDown')) - state.y;
     if (driving) {
@@ -1322,13 +1336,13 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
       return;
     }
     audio.engine(0, false, false);
-    const sprint = pressing('ShiftLeft', 'ShiftRight', 'sprint');
+    const sprint = state.sprinting || pressing('sprint');
     if (flight) {
       fly(dt, lateral, depth, sprint);
       return;
     }
     if (coast.riding) return;
-    const pace = swimming ? 3.6 : sprint ? 8.5 : 4.8;
+    const pace = swimming ? 3.6 : sprint ? 9.6 : 4.8;
     const [fx, fz] = forward(yaw);
     const norm = Math.max(1, Math.hypot(lateral, depth));
     const response = grounded ? 14 : 5;
@@ -1359,7 +1373,9 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     if (tryWalk(x, z + velocity.z * dt)) z += velocity.z * dt;
     else velocity.z = 0;
     moving = Math.hypot(x - lastX, z - lastZ) / dt;
-    if (moving > 0.12) {
+    if (attackUntil > clock) {
+      facing = yaw;
+    } else if (moving > 0.12) {
       const target = Math.atan2(lastX - x, lastZ - z);
       facing += angleBetween(target, facing) * (1 - Math.exp(-18 * dt));
     }
@@ -1414,6 +1430,7 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
     const steps = Math.ceil(dt / 0.035);
     for (let i = 0; i < steps && !paused; i++) move(dt / steps);
     if (paused) return;
+    if (!coast.game && (state.fire || pressing('Enter', 'fire'))) fire();
     coast.update(dt, clock, ferryRider);
     if (coast.riding) {
       [x, z, altitude] = [ferryRider.x, ferryRider.z, coast.elevation];
@@ -1482,6 +1499,8 @@ export async function createRealDrive({ stage, touch, store, audio, onLoad, call
         airborne: !grounded,
         riding,
         steer: driving?.steer,
+        strike: Math.sin(Math.PI * clamp((attackUntil - clock) / (weapon < 0 ? 0.29 : 0.18), 0, 1)),
+        armed: weapon >= 0,
         dt,
       });
     }

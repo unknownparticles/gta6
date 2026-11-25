@@ -1,26 +1,26 @@
-const mouseEdgeWidth = 24;
-const mouseEdgeSpeed = 1.8;
+const mouseEdgeWidth = 48;
+const mouseEdgeSpeed = 2.05;
+const mouseEdgeAcceleration = 5;
 
 export function createInput(canvas, container, action, canPlay, touch) {
   const held = new Set();
-  const state = { x: 0, y: 0, aiming: false, fire: false };
+  const state = { x: 0, y: 0, aiming: false, fire: false, sprinting: false };
   const stick = container.querySelector('#stick');
   const knob = stick.firstElementChild;
   const look = container.querySelector('#touch-look');
   let stickId = null;
   let lookId = null;
-  let mousePressed = false;
-  let dragMoved = false;
   let mouseX = null;
   let mouseY = 0;
   let lookX = 0;
   let lookY = 0;
-  let edgeTurn = 0;
+  let edgeTarget = 0;
+  let edgeSpeed = 0;
   const pointerButtons = new Map();
 
   const resetMouseLook = () => {
     mouseX = null;
-    edgeTurn = 0;
+    edgeTarget = edgeSpeed = 0;
   };
 
   const position = (event) => {
@@ -130,6 +130,7 @@ export function createInput(canvas, container, action, canPlay, touch) {
     (event) => {
       if (!canPlay()) return;
       const code = event.code;
+      if (event.shiftKey || event.key === 'Shift') state.sprinting = true;
       if (
         !actions[code] &&
         ![
@@ -155,7 +156,14 @@ export function createInput(canvas, container, action, canPlay, touch) {
     },
     options,
   );
-  window.addEventListener('keyup', (event) => held.delete(event.code), options);
+  window.addEventListener(
+    'keyup',
+    (event) => {
+      held.delete(event.code);
+      state.sprinting = event.shiftKey || held.has('ShiftLeft') || held.has('ShiftRight');
+    },
+    options,
+  );
   container.addEventListener(
     'contextmenu',
     (event) => {
@@ -164,37 +172,34 @@ export function createInput(canvas, container, action, canPlay, touch) {
     options,
   );
   canvas.addEventListener(
-    'pointerdown',
+    'mousedown',
     (event) => {
-      if (!canPlay() || touch() || event.pointerType !== 'mouse') return;
+      if (!canPlay() || touch() || event.sourceCapabilities?.firesTouchEvents) return;
       if (event.button === 2) state.aiming = true;
       if (event.button === 0) {
-        if (document.pointerLockElement === canvas) {
-          state.fire = true;
-          action('fire');
-          return;
-        }
-        mousePressed = true;
-        dragMoved = false;
+        state.fire = true;
         canvas.focus({ preventScroll: true });
+        action('fire');
       }
     },
     options,
   );
   window.addEventListener(
-    'pointerup',
+    'mouseup',
     (event) => {
-      if (event.pointerType !== 'mouse') return;
-      if (event.button === 0) {
-        if (mousePressed && !dragMoved && canPlay()) action('fire');
-        state.fire = mousePressed = false;
-      }
+      if (event.button === 0) state.fire = false;
       if (event.button === 2) state.aiming = false;
     },
     options,
   );
+  window.addEventListener(
+    'pointercancel',
+    (event) => {
+      if (event.pointerType === 'mouse') state.fire = state.aiming = false;
+    },
+    options,
+  );
   function moveMouse(dx, dy) {
-    if (mousePressed && Math.abs(dx) + Math.abs(dy) > 2) dragMoved = true;
     lookX += dx * 0.0041;
     lookY += dy * 0.0034;
   }
@@ -203,13 +208,15 @@ export function createInput(canvas, container, action, canPlay, touch) {
     'pointermove',
     (event) => {
       if (event.pointerType !== 'mouse' || touch() || document.pointerLockElement || !canPlay()) return;
+      if (!(event.buttons & 1)) state.fire = false;
       if (mouseX !== null) moveMouse(event.clientX - mouseX, event.clientY - mouseY);
       mouseX = event.clientX;
       mouseY = event.clientY;
       const { left, right } = canvas.getBoundingClientRect();
       const leftWeight = Math.max(0, 1 - (mouseX - left) / mouseEdgeWidth);
       const rightWeight = Math.max(0, 1 - (right - mouseX) / mouseEdgeWidth);
-      edgeTurn = mouseEdgeSpeed * Math.max(-1, Math.min(1, rightWeight - leftWeight));
+      const weight = Math.max(-1, Math.min(1, rightWeight - leftWeight));
+      edgeTarget = mouseEdgeSpeed * weight * Math.abs(weight);
     },
     options,
   );
@@ -218,7 +225,7 @@ export function createInput(canvas, container, action, canPlay, touch) {
     (event) => {
       if (event.pointerType !== 'mouse') return;
       resetMouseLook();
-      if (mousePressed) dragMoved = true;
+      if (!document.pointerLockElement) state.fire = state.aiming = false;
     },
     options,
   );
@@ -232,15 +239,24 @@ export function createInput(canvas, container, action, canPlay, touch) {
   );
   document.addEventListener('pointerlockchange', resetMouseLook, options);
   window.addEventListener('resize', resetMouseLook, options);
-  window.addEventListener('blur', resetMouseLook, options);
+  window.addEventListener(
+    'blur',
+    () => {
+      resetMouseLook();
+      state.fire = state.aiming = state.sprinting = false;
+    },
+    options,
+  );
 
   return {
     held,
     state,
     readLook(dt) {
-      const turn =
-        edgeTurn && canPlay() && !touch() && !document.pointerLockElement ? edgeTurn * dt : 0;
-      const delta = [lookX + turn, lookY];
+      if (edgeTarget && canPlay() && !touch() && !document.pointerLockElement) {
+        if (edgeSpeed * edgeTarget < 0) edgeSpeed = 0;
+        edgeSpeed += (edgeTarget - edgeSpeed) * (1 - Math.exp(-mouseEdgeAcceleration * dt));
+      } else edgeSpeed = 0;
+      const delta = [lookX + edgeSpeed * dt, lookY];
       lookX = lookY = 0;
       return delta;
     },
@@ -252,7 +268,7 @@ export function createInput(canvas, container, action, canPlay, touch) {
       resetMouseLook();
       knob.style.transform = '';
       state.x = state.y = lookX = lookY = 0;
-      state.fire = state.aiming = mousePressed = false;
+      state.fire = state.aiming = state.sprinting = false;
     },
   };
 }
